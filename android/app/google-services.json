@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "427530459983",
+    "project_id": "pmj-application",
+    "storage_bucket": "pmj-application.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:427530459983:android:287a3e590407fc58f9c33a",
+        "android_client_info": {
+          "package_name": "com.example.pmj_application"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCj8oUbDB1h2ldziveyuafffX_8TXQucy4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
