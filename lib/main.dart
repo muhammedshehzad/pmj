@@ -7,19 +7,25 @@ import 'package:pmj_application/primary/paymentsPage.dart';
 import 'package:pmj_application/primary/splashscreen.dart';
 import 'package:pmj_application/secondary/donorAdd.dart';
 import 'package:pmj_application/secondary/donorDetails.dart';
+import 'package:pmj_application/secondary/user_service.dart';
 import 'package:provider/provider.dart';
-
+import 'firebase_options.dart';
 import 'assets/custom widgets/GPay.dart';
 
-Future<void> main() async {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (context) => NavBarProvider(),child: BottomNavBarExample(),),
+        ChangeNotifierProvider(
+          create: (context) => NavBarProvider(), child: BottomNavBarExample(),),
         ChangeNotifierProvider(create: (context) => PeopleProvider()),
         ChangeNotifierProvider(create: (_) => PaymentProvider()),
+        Provider(create: (_) => UserService()), // Add UserService provider
+
         // Add other providers if necessary
       ],
       child: MyApp(),
@@ -37,14 +43,13 @@ class MyApp extends StatelessWidget {
       initialRoute: '/',
       routes: {
         '/': (context) => const splashscreen(),
-        '/login': (context) => const LoginScreen(),
+        '/login': (context) => const AuthScreens(),
         '/donorPage': (context) => const donorPage(),
         '/homePage': (context) => homePage(),
         '/BottomNavBarExample': (context) => BottomNavBarExample(),
-        '/donorDetails': (context) => donorDetails(),
-        '/donorAdd': (context) => donorAdd(),
-        '/paymentsPage': (context) => paymentsPage(),
-        '/GPay': (context) => GPay(),
+        '/donorAdd': (context) => DonorAdd(),
+        '/paymentsPage': (context) => PaymentsPage(),
+        // '/GPay': (context) => GPay(),
 
       },
       debugShowCheckedModeBanner: false,
@@ -60,6 +65,8 @@ class MyHomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final navBarProvider = Provider.of<NavBarProvider>(context);
-    return  Scaffold();
+    return Scaffold();
   }
 }
+//shehzadbinfaisal@gmail.com
+//chechu1

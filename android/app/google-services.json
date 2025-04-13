@@ -2,7 +2,7 @@
   "project_info": {
     "project_number": "427530459983",
     "project_id": "pmj-application",
-    "storage_bucket": "pmj-application.appspot.com"
+    "storage_bucket": "pmj-application.firebasestorage.app"
   },
   "client": [
     {
@@ -12,7 +12,12 @@
           "package_name": "com.example.pmj_application"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "427530459983-1e8v5qicuth4eedm881ralgmqrlike6c.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCj8oUbDB1h2ldziveyuafffX_8TXQucy4"
@@ -20,7 +25,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "427530459983-1e8v5qicuth4eedm881ralgmqrlike6c.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

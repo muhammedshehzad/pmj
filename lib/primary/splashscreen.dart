@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../secondary/auth_state_manager.dart';
+
 
 class splashscreen extends StatefulWidget {
   const splashscreen({super.key});
@@ -9,11 +11,31 @@ class splashscreen extends StatefulWidget {
 }
 
 class _HomeState extends State<splashscreen> {
+  final AuthStateManager _authStateManager = AuthStateManager();
+
   @override
   void initState() {
     super.initState();
     _navigateToMainPage();
+    _checkAuthAndNavigate();
+
   }
+  Future<void> _checkAuthAndNavigate() async {
+    // Initialize auth listener
+    _authStateManager.initAuthStateListener(context);
+
+    // Wait for splash animation or delay
+    await Future.delayed(const Duration(seconds: 2));
+
+    // Check auth state and get route
+    String route = await _authStateManager.checkAuthState();
+
+    // Navigate to appropriate route
+    if (mounted) {
+      Navigator.pushReplacementNamed(context, route);
+    }
+  }
+
 
   Future<void> _navigateToMainPage() async {
     await Future.delayed(Duration(seconds: 2));
