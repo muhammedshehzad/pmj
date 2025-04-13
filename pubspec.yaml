@@ -17,10 +17,19 @@ dependencies:
   image_picker: ^1.0.8
   cloud_firestore: ^5.4.4
   firebase_ui_firestore: ^1.6.0
+  pdf: ^3.10.8
+  path_provider: ^2.1.4
+  share_plus: ^10.0.2
+  intl: ^0.19.0
+
   flutter:
     sdk: flutter
   provider: ^6.1.2
-  firebase_core: ^3.6.0
+  firebase_core: ^3.12.1
+  firebase_auth: ^5.5.1
+  flutter_launcher_icons: ^0.14.3
+  shared_preferences: ^2.5.3
+  photo_view: ^0.15.0
 
 
 dev_dependencies:
@@ -34,6 +43,11 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
 
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: false
+  image_path: "lib/assets/images/PMJ Logo.png" # or "assets/images/app_logo.png"
+
 flutter:
 
   uses-material-design: true
@@ -41,6 +55,7 @@ flutter:
 
   assets:
     - lib/assets/images/
+    - lib/assets/images/PMJ Logo.png
 
   fonts:
     - family: Inter

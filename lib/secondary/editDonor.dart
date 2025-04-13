@@ -2,34 +2,67 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
-import 'package:intl/intl.dart';
-import '../assets/custom widgets/donorAddpopup.dart';
-import '../assets/custom widgets/logoutpopup.dart';
-import 'package:firebase_core/firebase_core.dart'; // Add Firebase Core
-import 'package:cloud_firestore/cloud_firestore.dart'; // Add Firestore
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:ui'; // For blur effect
 import 'package:http/http.dart' as http; // For Cloudinary upload
-import 'dart:convert'; // For JSON decoding
+import 'dart:convert';
 
-class DonorAdd extends StatefulWidget {
-  const DonorAdd({super.key});
+import '../assets/custom widgets/logoutpopup.dart'; // For JSON decoding
+
+class EditDonor extends StatefulWidget {
+  final String donorId;
+
+  const EditDonor({super.key, required this.donorId});
 
   @override
-  State<DonorAdd> createState() => _DonorAddState();
+  State<EditDonor> createState() => _EditDonorState();
 }
 
-class _DonorAddState extends State<DonorAdd> {
-  TextEditingController name = TextEditingController();
-  TextEditingController number = TextEditingController();
-  TextEditingController address = TextEditingController();
-  TextEditingController amount = TextEditingController();
+class _EditDonorState extends State<EditDonor> {
+  late TextEditingController name;
+  late TextEditingController number;
+  late TextEditingController address;
+  late TextEditingController amount;
   File? _image;
+  String? _existingImageUrl;
   final ImagePicker _picker = ImagePicker();
-  bool _isLoading = false; // Loading state for blur overlay
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    name = TextEditingController();
+    number = TextEditingController();
+    address = TextEditingController();
+    amount = TextEditingController();
+    _loadDonorData();
+  }
+
+  Future<void> _loadDonorData() async {
+    try {
+      DocumentSnapshot doc = await FirebaseFirestore.instance
+          .collection('donors')
+          .doc(widget.donorId)
+          .get();
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+        setState(() {
+          name.text = data['name'] ?? '';
+          number.text = data['number'] ?? '';
+          address.text = data['address'] ?? '';
+          amount.text = data['amount']?.toString() ?? '';
+          _existingImageUrl = data['imageUrl'];
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading donor data: $e')),
+      );
+    }
+  }
 
   Future<void> _pickImage(ImageSource source) async {
     final pickedFile = await _picker.pickImage(source: source);
-
     if (pickedFile != null) {
       setState(() {
         _image = File(pickedFile.path);
@@ -37,13 +70,12 @@ class _DonorAddState extends State<DonorAdd> {
     }
   }
 
-  // Function to upload image to Cloudinary and return the URL
   Future<String?> _uploadImageToCloudinary(File image) async {
-    setState(() => _isLoading = true); // Show loading
+    setState(() => _isLoading = true);
     try {
       final url = Uri.parse('https://api.cloudinary.com/v1_1/dfcehequr/upload');
       final request = http.MultipartRequest('POST', url)
-        ..fields['upload_preset'] = 'images' // Replace with your preset
+        ..fields['upload_preset'] = 'images'
         ..files.add(await http.MultipartFile.fromPath('file', image.path));
 
       final response = await request.send();
@@ -61,23 +93,23 @@ class _DonorAddState extends State<DonorAdd> {
       );
       return null;
     } finally {
-      setState(() => _isLoading = false); // Hide loading
+      setState(() => _isLoading = false);
     }
   }
 
-  // Function to add donor data to Firestore
-  Future<void> _addDonor() async {
+  Future<void> _updateDonor() async {
     setState(() => _isLoading = true);
     try {
-      String? imageUrl;
+      String? imageUrl = _existingImageUrl;
       if (_image != null) {
         imageUrl = await _uploadImageToCloudinary(_image!);
         if (imageUrl == null) throw Exception('Image upload failed');
       }
 
-      DocumentReference donorRef = await FirebaseFirestore.instance
+      await FirebaseFirestore.instance
           .collection('donors')
-          .add({
+          .doc(widget.donorId)
+          .update({
         'name': name.text,
         'number': number.text,
         'address': address.text,
@@ -86,40 +118,19 @@ class _DonorAddState extends State<DonorAdd> {
         'timestamp': FieldValue.serverTimestamp(),
       });
 
-      // Initialize paymentStatus for current year's months
-      final now = DateTime.now();
-      final currentYear = now.year;
-      final currentMonth = now.month;
-      Map<String, String> paymentStatus = {};
-
-      for (int month = 1; month <= currentMonth; month++) {
-        final date = DateTime(currentYear, month, 1);
-        final monthName = DateFormat('MMMM').format(date);
-        paymentStatus['$monthName-$currentYear'] = 'unpaid';
-      }
-
-      await donorRef.update({'paymentStatus': paymentStatus});
-
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Donor added successfully')),
+        const SnackBar(content: Text('Donor updated successfully')),
       );
-
+      Navigator.pop(context);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to add donor: $e')),
+        SnackBar(content: Text('Failed to update donor: $e')),
       );
     } finally {
       setState(() => _isLoading = false);
     }
   }
-// Helper to get month name
-  String _getMonthName(int month) {
-    const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    return months[month - 1];
-  }
+
   void _validateAndSubmit(BuildContext context) async {
     if (name.text.isEmpty ||
         number.text.isEmpty ||
@@ -129,17 +140,17 @@ class _DonorAddState extends State<DonorAdd> {
         const SnackBar(content: Text('All fields must be filled!')),
       );
     } else {
-      await _addDonor(); // Save to Firebase
-      showAddedConfirmation(context); // Show confirmation popup
-      // Clear fields after submission
-      name.clear();
-      number.clear();
-      address.clear();
-      amount.clear();
-      setState(() {
-        _image = null;
-      });
+      await _updateDonor();
     }
+  }
+
+  @override
+  void dispose() {
+    name.dispose();
+    number.dispose();
+    address.dispose();
+    amount.dispose();
+    super.dispose();
   }
 
   @override
@@ -206,9 +217,7 @@ class _DonorAddState extends State<DonorAdd> {
                     children: [
                       ListTile(
                         leading: GestureDetector(
-                          onTap: () {
-                            Navigator.pop(context);
-                          },
+                          onTap: () => Navigator.pop(context),
                           child: SvgPicture.asset(
                             'lib/assets/images/Back.svg',
                             height: 40,
@@ -217,7 +226,7 @@ class _DonorAddState extends State<DonorAdd> {
                         ),
                         title: const Center(
                           child: Text(
-                            'Add New Donor',
+                            'Edit Donor',
                             style: TextStyle(
                                 fontWeight: FontWeight.w600, fontSize: 16),
                           ),
@@ -234,11 +243,14 @@ class _DonorAddState extends State<DonorAdd> {
                           onTap: () => _pickImage(ImageSource.gallery),
                           child: CircleAvatar(
                             radius: 84,
-                            backgroundImage:
-                            _image != null ? FileImage(_image!) : null,
-                            child: _image == null
+                            backgroundImage: _image != null
+                                ? FileImage(_image!)
+                                : _existingImageUrl != null
+                                    ? NetworkImage(_existingImageUrl!)
+                                    : null,
+                            child: _image == null && _existingImageUrl == null
                                 ? SvgPicture.asset(
-                                'lib/assets/images/Add Image.svg')
+                                    'lib/assets/images/Add Image.svg')
                                 : null,
                           ),
                         ),
@@ -258,8 +270,6 @@ class _DonorAddState extends State<DonorAdd> {
                             const SizedBox(height: 4),
                             TextFormField(
                               controller: name,
-                              obscureText: false,
-                              keyboardType: TextInputType.name,
                               decoration: const InputDecoration(
                                 hintText: 'Faisal Tk',
                                 hintStyle: TextStyle(
@@ -285,7 +295,6 @@ class _DonorAddState extends State<DonorAdd> {
                             const SizedBox(height: 4),
                             TextFormField(
                               controller: number,
-                              obscureText: false,
                               keyboardType: TextInputType.number,
                               decoration: const InputDecoration(
                                 hintText: '9846338560',
@@ -313,10 +322,9 @@ class _DonorAddState extends State<DonorAdd> {
                             TextFormField(
                               maxLines: 3,
                               controller: address,
-                              obscureText: false,
-                              keyboardType: TextInputType.name,
                               decoration: const InputDecoration(
-                                hintText: 'Khair House, Abc Town, Kerala, 678541',
+                                hintText:
+                                    'Khair House, Abc Town, Kerala, 678541',
                                 hintStyle: TextStyle(
                                     fontSize: 12, color: Color(0xffA7A4AD)),
                                 enabledBorder: OutlineInputBorder(
@@ -340,7 +348,6 @@ class _DonorAddState extends State<DonorAdd> {
                             const SizedBox(height: 4),
                             TextFormField(
                               controller: amount,
-                              obscureText: false,
                               keyboardType: TextInputType.number,
                               decoration: const InputDecoration(
                                 hintText: '5000',
@@ -376,7 +383,7 @@ class _DonorAddState extends State<DonorAdd> {
                                 ? null
                                 : () => _validateAndSubmit(context),
                             child: const Text(
-                              'Add Donor',
+                              'Update Donor',
                               style: TextStyle(
                                 fontWeight: FontWeight.w600,
                                 fontSize: 14,
@@ -392,15 +399,12 @@ class _DonorAddState extends State<DonorAdd> {
               ),
             ],
           ),
-          // Full-screen blur and loading overlay
           if (_isLoading)
             Positioned.fill(
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0), // Blur effect
+                filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
                 child: Container(
-                  width: double.infinity,
-                  height: double.infinity,
-                  color: Colors.black.withOpacity(0.3), // Semi-transparent overlay
+                  color: Colors.black.withOpacity(0.3),
                   child: const Center(
                     child: CircularProgressIndicator(),
                   ),
