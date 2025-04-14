@@ -10,7 +10,7 @@ class personHome {
   final String month;
   final String year;
   final String status;
-  final String? documentPath; // Added for deletion functionality
+  final String? documentPath;
 
   personHome({
     required this.name,
@@ -27,8 +27,9 @@ class personHome {
 
 class PeopleListViewHome extends StatelessWidget {
   final List<personHome> peoplesHome;
+  final Function(personHome)? onTap;
 
-  const PeopleListViewHome({Key? key, required this.peoplesHome})
+  const PeopleListViewHome({Key? key, required this.peoplesHome, this.onTap})
       : super(key: key);
 
   @override
@@ -43,9 +44,19 @@ class PeopleListViewHome extends StatelessWidget {
         // Check if donorId is valid
         if (person.donorId.isEmpty) {
           return ListTile(
-            leading: const CircleAvatar(
-              backgroundImage: NetworkImage('https://via.placeholder.com/150'),
+            onTap: onTap != null ? () => onTap!(person) : null,
+            leading: CircleAvatar(
               radius: 20,
+              backgroundImage: null, // No network image for empty donorId
+              backgroundColor: Colors.teal,
+              child: Text(
+                person.name.isNotEmpty ? person.name[0].toUpperCase() : '',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
             ),
             title: Text(
               person.name,
@@ -103,16 +114,25 @@ class PeopleListViewHome extends StatelessWidget {
               .get(),
           builder: (context, donorSnapshot) {
             if (donorSnapshot.connectionState == ConnectionState.waiting) {
-              return SizedBox();
+              return const SizedBox();
             }
             if (donorSnapshot.hasError ||
                 !donorSnapshot.hasData ||
                 !donorSnapshot.data!.exists) {
               return ListTile(
-                leading: const CircleAvatar(
-                  backgroundImage:
-                      NetworkImage('https://via.placeholder.com/150'),
+                onTap: onTap != null ? () => onTap!(person) : null,
+                leading: CircleAvatar(
                   radius: 20,
+                  backgroundImage: null, // No valid donor data
+                  backgroundColor: Colors.teal,
+                  child: Text(
+                    person.name.isNotEmpty ? person.name[0].toUpperCase() : '',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
                 title: Text(
                   person.name,
@@ -164,14 +184,29 @@ class PeopleListViewHome extends StatelessWidget {
             }
 
             final donorData =
-                donorSnapshot.data!.data() as Map<String, dynamic>;
-            final donorImage =
-                donorData['imageUrl'] ?? 'https://via.placeholder.com/150';
+            donorSnapshot.data!.data() as Map<String, dynamic>;
+            final donorImage = donorData['imageUrl'] as String?;
 
             return ListTile(
+              onTap: onTap != null ? () => onTap!(person) : null,
               leading: CircleAvatar(
-                backgroundImage: NetworkImage(donorImage),
                 radius: 20,
+                backgroundImage: donorImage != null && donorImage.isNotEmpty
+                    ? NetworkImage(donorImage)
+                    : null,
+                backgroundColor: donorImage != null && donorImage.isNotEmpty
+                    ? null
+                    : Color(0xff1BA3A1),
+                child: donorImage == null || donorImage.isEmpty
+                    ? Text(
+                  person.name.isNotEmpty ? person.name[0].toUpperCase() : '',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                )
+                    : null,
               ),
               title: Text(
                 person.name,
@@ -219,9 +254,6 @@ class PeopleListViewHome extends StatelessWidget {
                   ],
                 ),
               ),
-              onTap: () {
-                // Add navigation or action if needed
-              },
             );
           },
         );

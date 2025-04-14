@@ -191,7 +191,20 @@ class _PeopleListViewDonorState extends State<PeopleListViewDonor> {
                               radius: 25,
                               backgroundImage: person.photoUrl.isNotEmpty
                                   ? NetworkImage(person.photoUrl)
-                                  : AssetImage('lib/assets/images/default.png') as ImageProvider,
+                                  : null, // Set to null when no photoUrl
+                              backgroundColor: person.photoUrl.isNotEmpty
+                                  ? null
+                                  : Color(0xff1BA3A1), // Use a fallback color when no image
+                              child: person.photoUrl.isEmpty
+                                  ? Text(
+                                person.name.isNotEmpty ? person.name[0].toUpperCase() : '',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              )
+                                  : null, // Show text only when no image
                             ),
                             title: Text(
                               person.name,

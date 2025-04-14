@@ -1265,8 +1265,10 @@ class ReportPreviewPage extends StatelessWidget {
         child: pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Text('Filter: $selectedFilter', style: const pw.TextStyle(fontSize: 12)),
-            pw.Text('Person: $selectedPerson', style: const pw.TextStyle(fontSize: 12)),
+            pw.Text('Filter: $selectedFilter',
+                style: const pw.TextStyle(fontSize: 12)),
+            pw.Text('Person: $selectedPerson',
+                style: const pw.TextStyle(fontSize: 12)),
           ],
         ),
       ),
@@ -1285,7 +1287,8 @@ class ReportPreviewPage extends StatelessWidget {
         columnWidths: {
           0: const pw.FixedColumnWidth(40), // S.No. column
           1: const pw.FixedColumnWidth(100), // Person column
-          for (int i = 0; i < months.length; i++) i + 2: const pw.FixedColumnWidth(50), // Month columns
+          for (int i = 0; i < months.length; i++)
+            i + 2: const pw.FixedColumnWidth(50), // Month columns
         },
         children: [
           pw.TableRow(
@@ -1316,17 +1319,17 @@ class ReportPreviewPage extends StatelessWidget {
                 ),
               ),
               ...months.map((month) => pw.Container(
-                padding: const pw.EdgeInsets.all(8),
-                alignment: pw.Alignment.center,
-                child: pw.Text(
-                  month.substring(0, 3), // Abbreviated month
-                  style: pw.TextStyle(
-                    color: PdfColors.white,
-                    fontWeight: pw.FontWeight.bold,
-                    fontSize: 10,
-                  ),
-                ),
-              )),
+                    padding: const pw.EdgeInsets.all(8),
+                    alignment: pw.Alignment.center,
+                    child: pw.Text(
+                      month.substring(0, 3), // Abbreviated month
+                      style: pw.TextStyle(
+                        color: PdfColors.white,
+                        fontWeight: pw.FontWeight.bold,
+                        fontSize: 10,
+                      ),
+                    ),
+                  )),
             ],
           ),
           ...uniqueNames.asMap().entries.map((entry) {
@@ -1407,21 +1410,21 @@ class ReportPreviewPage extends StatelessWidget {
                     final displayText = status == 'paid'
                         ? 'Paid'
                         : status == 'unpaid'
-                        ? 'Unpaid'
-                        : '';
+                            ? 'Unpaid'
+                            : '';
                     final displayColor = status == 'paid'
                         ? PdfColors.white
                         : status == 'unpaid'
-                        ? PdfColors.red
-                        : PdfColors.black;
+                            ? PdfColors.red
+                            : PdfColors.black;
                     return pw.Container(
                       padding: const pw.EdgeInsets.all(6),
                       alignment: pw.Alignment.center,
                       decoration: status == 'paid'
                           ? pw.BoxDecoration(
-                        color: PdfColors.green,
-                        border: pw.Border.all(color: PdfColors.grey400),
-                      )
+                              color: PdfColors.green,
+                              border: pw.Border.all(color: PdfColors.grey400),
+                            )
                           : null,
                       child: pw.Text(
                         displayText,
@@ -1440,7 +1443,9 @@ class ReportPreviewPage extends StatelessWidget {
         ],
       ),
     ];
-  }  List<pw.Widget> _buildSingleMonthTable() {
+  }
+
+  List<pw.Widget> _buildSingleMonthTable() {
     final totalAmount = _calculateTotalAmount();
     final sortedPayments = _sortPaymentsByMonth(payments);
 
