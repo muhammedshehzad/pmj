@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
+import 'package:dropdown_search/dropdown_search.dart';
 import '../assets/custom widgets/transition.dart';
 import '../secondary/all_donations.dart';
 
@@ -445,36 +445,92 @@ class _PaymentsPageState extends State<PaymentsPage> {
                               fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 4),
-                        DropdownButtonFormField<String>(
-                          decoration: InputDecoration(
-                            hintText: "Select a donor",
-                            hintStyle: const TextStyle(
-                                fontSize: 12, color: Color(0xffA7A4AD)),
-                            enabledBorder: OutlineInputBorder(
-                              borderSide: const BorderSide(
-                                  color: Color(0xFF1BA3A1), width: 1.0),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderSide: const BorderSide(
-                                  color: Color(0xFF1BA3A1), width: 2.0),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                          value: provider.selectedDonor,
-                          items: provider.donors.map((donor) {
-                            return DropdownMenuItem<String>(
-                              value: donor['name'],
-                              child: Text(
-                                donor['name'],
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            );
-                          }).toList(),
-                          onChanged: (String? newValue) {
-                            provider.setSelectedDonor(newValue);
-                          },
-                        ),
+          DropdownSearch<String>(
+            popupProps: PopupProps.menu(
+              showSearchBox: true,
+              searchFieldProps: TextFieldProps(
+                decoration: InputDecoration(
+                  hintText: "Search donor...",
+                  hintStyle: const TextStyle(fontSize: 12, color: Color(0xffA7A4AD)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  border: OutlineInputBorder(
+                    borderSide: const BorderSide(color: Color(0xFF1BA3A1), width: 1.0),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: const BorderSide(color: Color(0xFF1BA3A1), width: 1.0),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: const BorderSide(color: Color(0xFF1BA3A1), width: 2.0),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+              fit: FlexFit.loose,
+              constraints: BoxConstraints(maxHeight: 300),
+              containerBuilder: (context, popupWidget) {
+                return Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Color(0xFF1BA3A1),
+                      width: 1.0,
+                    ),
+                  ),
+                  child: popupWidget,
+                );
+              },
+              // Add itemBuilder to customize dropdown item text size
+              itemBuilder: (context, item, isDisabled, isSelected) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Text(
+                    item,
+                    style: TextStyle(
+                      fontSize: 12, // Reduced text size for dropdown items
+                      color: isSelected ? Color(0xFF1BA3A1) : Colors.black87,
+                    ),
+                  ),
+                );
+              },
+            ),
+            dropdownBuilder: (context, selectedItem) => Text(
+              selectedItem ?? "",
+              style: const TextStyle(fontSize: 12, color: Colors.black87),
+            ),
+            decoratorProps: DropDownDecoratorProps(
+              decoration: InputDecoration(
+                hintText: "Select a donor",
+                hintStyle: const TextStyle(fontSize: 12, color: Color(0xffA7A4AD)),
+                enabledBorder: OutlineInputBorder(
+                  borderSide: const BorderSide(color: Color(0xFF1BA3A1), width: 1.0),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: const BorderSide(color: Color(0xFF1BA3A1), width: 2.0),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+            ),
+            items: (String? filter, LoadProps? loadProps) async {
+              final filteredItems = provider.donors
+                  .map((donor) => donor['name'] as String)
+                  .where((name) =>
+              filter == null ||
+                  filter.isEmpty ||
+                  name.toLowerCase().contains(filter.toLowerCase()))
+                  .toList();
+              return Future.value(filteredItems);
+            },
+            selectedItem: provider.selectedDonor,
+            onChanged: (String? newValue) {
+              provider.setSelectedDonor(newValue);
+            },
+            itemAsString: (String? item) => item ?? '',
+          ),
                         const SizedBox(height: 10),
                         const Text(
                           'Select Month',
@@ -612,10 +668,9 @@ class _PaymentsPageState extends State<PaymentsPage> {
                                     child: Text(
                                       "Payment Method",
                                       style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 12,
-                                        color: Colors.white
-                                      ),
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 12,
+                                          color: Colors.white),
                                     ),
                                   ),
                                   icon: Padding(
@@ -769,8 +824,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                                         .get(),
                                     builder: (context, donorSnapshot) {
                                       if (!donorSnapshot.hasData) {
-                                        return const ListTile(
-                                            title: Text('Loading...'));
+                                        return const ListTile(title: Text(''));
                                       }
 
                                       final donorData = donorSnapshot.data!
@@ -783,9 +837,29 @@ class _PaymentsPageState extends State<PaymentsPage> {
 
                                       return ListTile(
                                         leading: CircleAvatar(
-                                          backgroundImage:
-                                              NetworkImage(donorImage),
                                           radius: 20,
+                                          backgroundImage: donorImage != null &&
+                                                  donorImage.isNotEmpty
+                                              ? NetworkImage(donorImage)
+                                              : null,
+                                          backgroundColor: donorImage != null &&
+                                                  donorImage.isNotEmpty
+                                              ? null
+                                              : Color(0xff1BA3A1),
+                                          child: donorImage == null ||
+                                                  donorImage.isEmpty
+                                              ? Text(
+                                                  donorName.isNotEmpty
+                                                      ? donorName[0]
+                                                          .toUpperCase()
+                                                      : '',
+                                                  style: const TextStyle(
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.white,
+                                                  ),
+                                                )
+                                              : null,
                                         ),
                                         title: Text(
                                           donorName,

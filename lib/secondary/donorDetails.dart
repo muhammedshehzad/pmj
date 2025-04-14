@@ -254,8 +254,22 @@ class _donorDetailsState extends State<donorDetails> {
                               radius: 50,
                               backgroundImage: donorImageUrl.isNotEmpty
                                   ? NetworkImage(donorImageUrl)
-                                  : AssetImage('lib/assets/images/default.png')
-                                      as ImageProvider,
+                                  : null,
+                              backgroundColor: donorImageUrl.isNotEmpty
+                                  ? null
+                                  : Color(0xff1BA3A1),
+                              child: donorImageUrl.isEmpty
+                                  ? Text(
+                                      donorName.isNotEmpty
+                                          ? donorName[0].toUpperCase()
+                                          : '',
+                                      style: const TextStyle(
+                                        fontSize: 32,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : null,
                             ),
                           ),
                         ),
