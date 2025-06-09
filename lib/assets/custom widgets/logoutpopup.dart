@@ -65,6 +65,7 @@ Future<bool> showLogoutConfirmation(BuildContext context) async {
                 ),
               ),
               onPressed: () {
+                _performLogout;
                 Navigator.of(dialogContext).pop(true);
               },
             ),

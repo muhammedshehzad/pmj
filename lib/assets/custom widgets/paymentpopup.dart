@@ -17,7 +17,7 @@ void showSubmitConfirmation(BuildContext context) {
         actions: <Widget>[
           Container(
             height: 26,
-            width: 49,
+            width: 60,
             margin: EdgeInsets.only(right: 4, bottom: 4),
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(

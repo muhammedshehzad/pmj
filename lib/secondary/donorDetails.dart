@@ -568,8 +568,8 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
         ),
         actions: [
           Container(
-            height: 26,
-            width: 49,
+            height: 30,
+            width: 70,
             margin: const EdgeInsets.only(right: 4, bottom: 4),
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
@@ -584,8 +584,8 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
                 'OK',
                 style: TextStyle(
                   fontFamily: "Inter",
-                  fontWeight: FontWeight.w400,
-                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 9,
                 ),
               ),
               onPressed: () => Navigator.pop(context),
