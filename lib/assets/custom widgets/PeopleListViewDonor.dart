@@ -122,6 +122,7 @@ class _PeopleListViewDonorState extends State<PeopleListViewDonor> {
               ),
             ),
           ),
+          SizedBox(height:7),
           // Donor List
           Expanded(
             child: StreamBuilder<User?>(

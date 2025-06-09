@@ -18,8 +18,8 @@ dependencies:
   cloud_firestore: ^5.4.4
   firebase_ui_firestore: ^1.6.0
   pdf: ^3.10.8
-  path_provider: ^2.1.4
-  share_plus: ^10.0.2
+  path_provider: ^2.1.5
+  share_plus: ^11.0.0
   intl: ^0.19.0
 
   flutter:
@@ -31,6 +31,9 @@ dependencies:
   shared_preferences: ^2.5.3
   photo_view: ^0.15.0
   dropdown_search: ^6.0.2
+  connectivity_plus: ^6.1.3
+  universal_html: ^2.2.4
+  shimmer: ^3.0.0
 
 
 dev_dependencies:
@@ -48,15 +51,14 @@ flutter_launcher_icons:
   android: "launcher_icon"
   ios: false
   image_path: "lib/assets/images/PMJ Logo.png" # or "assets/images/app_logo.png"
-
 flutter:
-
   uses-material-design: true
-
 
   assets:
     - lib/assets/images/
     - lib/assets/images/PMJ Logo.png
+    - lib/assets/fonts/Inter_24pt-Regular.ttf
+    - lib/assets/fonts/Inter_24pt-SemiBold.ttf
 
   fonts:
     - family: Inter
@@ -65,4 +67,3 @@ flutter:
           weight: 400
         - asset: lib/assets/fonts/Inter_24pt-SemiBold.ttf
           weight: 600
-

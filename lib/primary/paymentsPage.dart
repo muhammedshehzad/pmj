@@ -326,28 +326,27 @@ class _PaymentsPageState extends State<PaymentsPage> {
         ),
         actions: [
           Container(
-            height: 26,
-            width: 49,
+            height: 30,
+            width: 70,
             margin: const EdgeInsets.only(right: 4, bottom: 4),
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
                 foregroundColor: Colors.white,
                 backgroundColor: const Color(0xffF44336),
                 elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
               ),
               child: const Text(
                 'OK',
                 style: TextStyle(
                   fontFamily: "Inter",
-                  fontWeight: FontWeight.w400,
-                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 9,
                 ),
               ),
-              onPressed: () {
-                Navigator.pop(context);
-                Provider.of<PaymentProvider>(context, listen: false)
-                    .clearFields();
-              },
+              onPressed: () => Navigator.pop(context),
             ),
           ),
         ],
@@ -369,21 +368,24 @@ class _PaymentsPageState extends State<PaymentsPage> {
         ),
         actions: [
           Container(
-            height: 26,
-            width: 49,
+            height: 30,
+            width: 70,
             margin: const EdgeInsets.only(right: 4, bottom: 4),
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
                 foregroundColor: Colors.white,
                 backgroundColor: const Color(0xffF44336),
                 elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
               ),
               child: const Text(
                 'OK',
                 style: TextStyle(
                   fontFamily: "Inter",
-                  fontWeight: FontWeight.w400,
-                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 9,
                 ),
               ),
               onPressed: () => Navigator.pop(context),
@@ -445,92 +447,109 @@ class _PaymentsPageState extends State<PaymentsPage> {
                               fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 4),
-          DropdownSearch<String>(
-            popupProps: PopupProps.menu(
-              showSearchBox: true,
-              searchFieldProps: TextFieldProps(
-                decoration: InputDecoration(
-                  hintText: "Search donor...",
-                  hintStyle: const TextStyle(fontSize: 12, color: Color(0xffA7A4AD)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  border: OutlineInputBorder(
-                    borderSide: const BorderSide(color: Color(0xFF1BA3A1), width: 1.0),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderSide: const BorderSide(color: Color(0xFF1BA3A1), width: 1.0),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderSide: const BorderSide(color: Color(0xFF1BA3A1), width: 2.0),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ),
-              fit: FlexFit.loose,
-              constraints: BoxConstraints(maxHeight: 300),
-              containerBuilder: (context, popupWidget) {
-                return Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: Color(0xFF1BA3A1),
-                      width: 1.0,
-                    ),
-                  ),
-                  child: popupWidget,
-                );
-              },
-              // Add itemBuilder to customize dropdown item text size
-              itemBuilder: (context, item, isDisabled, isSelected) {
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Text(
-                    item,
-                    style: TextStyle(
-                      fontSize: 12, // Reduced text size for dropdown items
-                      color: isSelected ? Color(0xFF1BA3A1) : Colors.black87,
-                    ),
-                  ),
-                );
-              },
-            ),
-            dropdownBuilder: (context, selectedItem) => Text(
-              selectedItem ?? "",
-              style: const TextStyle(fontSize: 12, color: Colors.black87),
-            ),
-            decoratorProps: DropDownDecoratorProps(
-              decoration: InputDecoration(
-                hintText: "Select a donor",
-                hintStyle: const TextStyle(fontSize: 12, color: Color(0xffA7A4AD)),
-                enabledBorder: OutlineInputBorder(
-                  borderSide: const BorderSide(color: Color(0xFF1BA3A1), width: 1.0),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderSide: const BorderSide(color: Color(0xFF1BA3A1), width: 2.0),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              ),
-            ),
-            items: (String? filter, LoadProps? loadProps) async {
-              final filteredItems = provider.donors
-                  .map((donor) => donor['name'] as String)
-                  .where((name) =>
-              filter == null ||
-                  filter.isEmpty ||
-                  name.toLowerCase().contains(filter.toLowerCase()))
-                  .toList();
-              return Future.value(filteredItems);
-            },
-            selectedItem: provider.selectedDonor,
-            onChanged: (String? newValue) {
-              provider.setSelectedDonor(newValue);
-            },
-            itemAsString: (String? item) => item ?? '',
-          ),
+                        DropdownSearch<String>(
+                          popupProps: PopupProps.menu(
+                            showSearchBox: true,
+                            searchFieldProps: TextFieldProps(
+                              decoration: InputDecoration(
+                                hintText: "Search donor...",
+                                hintStyle: const TextStyle(
+                                    fontSize: 12, color: Color(0xffA7A4AD)),
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 8),
+                                border: OutlineInputBorder(
+                                  borderSide: const BorderSide(
+                                      color: Color(0xFF1BA3A1), width: 1.0),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderSide: const BorderSide(
+                                      color: Color(0xFF1BA3A1), width: 1.0),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderSide: const BorderSide(
+                                      color: Color(0xFF1BA3A1), width: 2.0),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                            ),
+                            fit: FlexFit.loose,
+                            constraints: BoxConstraints(maxHeight: 300),
+                            containerBuilder: (context, popupWidget) {
+                              return Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Color(0xFF1BA3A1),
+                                    width: 1.0,
+                                  ),
+                                ),
+                                child: popupWidget,
+                              );
+                            },
+                            // Add itemBuilder to customize dropdown item text size
+                            itemBuilder:
+                                (context, item, isDisabled, isSelected) {
+                              return Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 8),
+                                child: Text(
+                                  item,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    // Reduced text size for dropdown items
+                                    color: isSelected
+                                        ? Color(0xFF1BA3A1)
+                                        : Colors.black87,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          dropdownBuilder: (context, selectedItem) => Text(
+                            selectedItem ?? "",
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.black87),
+                          ),
+                          decoratorProps: DropDownDecoratorProps(
+                            decoration: InputDecoration(
+                              hintText: "Select a donor",
+                              hintStyle: const TextStyle(
+                                  fontSize: 12, color: Color(0xffA7A4AD)),
+                              enabledBorder: OutlineInputBorder(
+                                borderSide: const BorderSide(
+                                    color: Color(0xFF1BA3A1), width: 1.0),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderSide: const BorderSide(
+                                    color: Color(0xFF1BA3A1), width: 2.0),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                          items: (String? filter, LoadProps? loadProps) async {
+                            final filteredItems = provider.donors
+                                .map((donor) => donor['name'] as String)
+                                .where((name) =>
+                                    filter == null ||
+                                    filter.isEmpty ||
+                                    name
+                                        .toLowerCase()
+                                        .contains(filter.toLowerCase()))
+                                .toList();
+                            return Future.value(filteredItems);
+                          },
+                          selectedItem: provider.selectedDonor,
+                          onChanged: (String? newValue) {
+                            provider.setSelectedDonor(newValue);
+                          },
+                          itemAsString: (String? item) => item ?? '',
+                        ),
                         const SizedBox(height: 10),
                         const Text(
                           'Select Month',

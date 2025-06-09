@@ -3,6 +3,7 @@ import 'package:flutter_svg/svg.dart';
 import 'package:pmj_application/primary/paymentsPage.dart';
 import 'package:pmj_application/primary/settingsPage.dart';
 import 'package:provider/provider.dart';
+import 'package:shimmer/shimmer.dart'; // Add this dependency
 import '../assets/custom widgets/PeopleListViewHome.dart';
 import '../assets/custom widgets/logoutpopup.dart';
 import '../assets/custom widgets/transition.dart';
@@ -26,6 +27,189 @@ class PeopleProvider with ChangeNotifier {
   List<personHome> _peoplesHome = [];
 
   List<personHome> get peoplesHome => _peoplesHome;
+}
+
+// Shimmer widget for the statistics container
+class StatsShimmer extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 115,
+      decoration: BoxDecoration(
+        border: Border.all(width: 1, color: Color(0xff1BA3A1)),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      width: MediaQuery.of(context).size.width,
+      child: Shimmer.fromColors(
+        baseColor: Colors.grey[300]!,
+        highlightColor: Colors.grey[100]!,
+        child: Column(
+          children: [
+            SizedBox(height: 15),
+            Container(
+              width: 60,
+              height: 14,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                Column(
+                  children: [
+                    Container(
+                      width: 30,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    SizedBox(height: 5),
+                    Container(
+                      width: 50,
+                      height: 19,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ],
+                ),
+                Container(width: 1, color: Colors.grey[400], height: 50),
+                Column(
+                  children: [
+                    Container(
+                      width: 50,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    SizedBox(height: 5),
+                    Container(
+                      width: 60,
+                      height: 19,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ],
+                ),
+                Container(width: 1, color: Colors.grey[400], height: 50),
+                Column(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    SizedBox(height: 5),
+                    Container(
+                      width: 55,
+                      height: 19,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Shimmer widget for donation list items
+class DonationListShimmer extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      child: ListView.builder(
+        itemCount: 6,
+        itemBuilder: (context, index) {
+          return Container(
+            margin: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            padding: EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey[200]!),
+            ),
+            child: Row(
+              children: [
+                // Avatar shimmer
+                CircleAvatar(
+                  radius: 25,
+                  backgroundColor: Colors.white,
+                ),
+                SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Name shimmer
+                      Container(
+                        width: double.infinity,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      // Date shimmer
+                      Container(
+                        width: 100,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      // Method shimmer
+                      Container(
+                        width: 80,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Amount shimmer
+                Container(
+                  width: 60,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
 }
 
 class homePage extends StatefulWidget {
@@ -83,15 +267,7 @@ class _homePageState extends State<homePage> {
             stream: FirebaseFirestore.instance.collection('donors').snapshots(),
             builder: (context, donorSnapshot) {
               if (donorSnapshot.connectionState == ConnectionState.waiting) {
-                return Container(
-                  height: 115,
-                  decoration: BoxDecoration(
-                    border: Border.all(width: 1, color: Color(0xff1BA3A1)),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  width: MediaQuery.of(context).size.width,
-                  child: Center(child: CircularProgressIndicator()),
-                );
+                return StatsShimmer();
               }
 
               if (donorSnapshot.hasError) {
@@ -320,7 +496,7 @@ class _homePageState extends State<homePage> {
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return Center(child: CircularProgressIndicator());
+                  return DonationListShimmer();
                 }
                 if (snapshot.hasError) {
                   print('Firestore Error: ${snapshot.error}');
@@ -341,7 +517,7 @@ class _homePageState extends State<homePage> {
                   builder: (context, futureSnapshot) {
                     if (futureSnapshot.connectionState ==
                         ConnectionState.waiting) {
-                      return Center(child: CircularProgressIndicator());
+                      return DonationListShimmer();
                     }
                     if (futureSnapshot.hasError) {
                       print('Future Error: ${futureSnapshot.error}');
@@ -412,76 +588,6 @@ class BottomNavBarExample extends StatelessWidget {
                         ),
                         Row(
                           children: [
-                            // Refresh Button
-                            IconButton(
-                              icon: Icon(
-                                Icons.refresh,
-                                color: Colors.white,
-                                size: 26,
-                              ),
-                              onPressed: () {
-                                WidgetsBinding.instance
-                                    .addPostFrameCallback((_) async {
-                                  try {
-                                    await Provider.of<PaymentProvider>(context,
-                                            listen: false)
-                                        .fetchDonors();
-                                    final querySnapshot =
-                                        await FirebaseFirestore.instance
-                                            .collectionGroup('payments')
-                                            .get();
-
-                                    print(
-                                        'Number of documents retrieved: ${querySnapshot.docs.length}');
-
-                                    if (querySnapshot.docs.isEmpty) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                              'No payment records found in Firebase.'),
-                                        ),
-                                      );
-
-                                      return;
-                                    }
-
-                                    // Log the raw data for debugging
-                                    for (var doc in querySnapshot.docs) {
-                                      print('Document data: ${doc.data()}');
-                                    }
-
-                                    // Extract unique names from the payments collection
-                                    final uniquePeople = querySnapshot.docs
-                                        .map((doc) =>
-                                            doc.data()['name'] as String?)
-                                        .where((name) =>
-                                            name != null &&
-                                            name.isNotEmpty) // Filter out null/empty
-                                        .toSet() // Remove duplicates
-                                        .toList()
-                                        .cast<String>();
-
-                                    uniquePeople.sort(); // Sort alphabetically
-
-                                    if (uniquePeople.isEmpty) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                              'No valid user names found in payment records.'),
-                                        ),
-                                      );
-                                    }
-                                  } catch (e) {
-                                  } finally {}
-                                });
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Refreshing...')),
-                                );
-                              },
-                              tooltip: 'Refresh',
-                            ),
                             SizedBox(width: 10),
                             // Space between refresh and logout
                             Container(

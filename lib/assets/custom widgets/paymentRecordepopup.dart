@@ -16,25 +16,27 @@ void showRecordConfirmation(BuildContext context) {
         ),
         actions: <Widget>[
           Container(
-            height: 26,
-            width: 49,
-            margin: EdgeInsets.only(right: 4, bottom: 4),
+            height: 30,
+            width: 70,
+            margin: const EdgeInsets.only(right: 4, bottom: 4),
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  backgroundColor: Color(0xffF44336),
-                  elevation: 0),
-              child: Text(
+                foregroundColor: Colors.white,
+                backgroundColor: const Color(0xffF44336),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              child: const Text(
                 'OK',
                 style: TextStyle(
-                    fontFamily: "Inter",
-                    fontWeight: FontWeight.w400,
-                    fontSize: 11),
+                  fontFamily: "Inter",
+                  fontWeight: FontWeight.bold,
+                  fontSize: 9,
+                ),
               ),
-              onPressed: () {
-                Navigator.of(context).pop();
-                _performRecord(context);
-              },
+              onPressed: () => Navigator.pop(context),
             ),
           ),
         ],

@@ -1,16 +1,15 @@
-import 'dart:ui';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:pmj_application/assets/custom%20widgets/GPay.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart'; // For formatting dates
-import 'package:pdf/pdf.dart'; // For PDF generation
-import 'package:pdf/widgets.dart' as pw; // For PDF widgets
-import 'package:path_provider/path_provider.dart'; // For file storage
-import 'package:share_plus/share_plus.dart'; // For sharing the PDF
-import 'dart:io';
+import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../assets/custom widgets/logoutpopup.dart';
-import '../assets/custom widgets/transition.dart'; // For file operations
+import '../assets/custom widgets/transition.dart';
+import '../assets/custom widgets/GPay.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -47,7 +46,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 ReportsSection(
                   onLoadingChanged: _setLoading,
                 ),
@@ -55,9 +54,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 GestureDetector(
                   onTap: () {
                     Navigator.push(
-                        context,
-                        SlidingPageTransitionRL(
-                            page: const NotificationsPage()));
+                      context,
+                      SlidingPageTransitionRL(page: const NotificationsPage()),
+                    );
                   },
                   child: Container(
                     margin: const EdgeInsets.only(left: 2),
@@ -93,11 +92,13 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 14),
                 GestureDetector(
                   onTap: () {
                     Navigator.push(
-                        context, SlidingPageTransitionRL(page: GPay()));
+                      context,
+                      SlidingPageTransitionRL(page: const GPay()),
+                    );
                   },
                   child: Container(
                     margin: const EdgeInsets.only(left: 2),
@@ -225,22 +226,20 @@ class NotificationsPage extends StatelessWidget {
                       color: Colors.black.withOpacity(0.05),
                       spreadRadius: 1,
                       blurRadius: 3,
-                      offset: Offset(0, 2),
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
                 child: ListTile(
                   leading: GestureDetector(
-                    onTap: () {
-                      Navigator.pop(context);
-                    },
+                    onTap: () => Navigator.pop(context),
                     child: SvgPicture.asset(
                       'lib/assets/images/Back.svg',
                       height: 40,
                       width: 40,
                     ),
                   ),
-                  title: Center(
+                  title: const Center(
                     child: Text(
                       'Notifications Page',
                       style: TextStyle(
@@ -291,7 +290,6 @@ class NotificationsPage extends StatelessWidget {
                   color: Colors.black54,
                 ),
               ),
-              const SizedBox(height: 32),
             ],
           ),
         ),
@@ -303,30 +301,33 @@ class NotificationsPage extends StatelessWidget {
 class ReportsSection extends StatefulWidget {
   final Function(bool) onLoadingChanged;
 
-  const ReportsSection({super.key, required this.onLoadingChanged});
+  const ReportsSection({Key? key, required this.onLoadingChanged})
+      : super(key: key);
 
   @override
-  State<ReportsSection> createState() => _ReportsSectionState();
+  _ReportsSectionState createState() => _ReportsSectionState();
 }
 
 class _ReportsSectionState extends State<ReportsSection> {
   late List<String> years;
   late List<String> months;
   final List<String> filterOptions = [
+    "All payments",
     "Payment received only",
     "Payments to be received",
-    "All payments",
   ];
   List<String> peopleList = ['All People'];
   String selectedPerson = 'All People';
   late String selectedYear;
-  late String selectedMonth;
+  String selectedMonth = "Whole Year";
   late String selectedFilter;
-  bool _isLoading = false;
-  bool useDateRange = false;
-  DateTime? startDate;
-  DateTime? endDate;
+  bool _isLoadingPreview = false; // Separate loading for Preview button
+  bool _isLoadingPDF = false; // Separate loading for PDF button
   bool useAdvancedFilters = false;
+  bool useMonthRange = false;
+  int startMonthIndex = 0; // Jan
+  int endMonthIndex = 11; // Dec
+  int selectedMonthIndex = 0;
 
   @override
   void initState() {
@@ -351,18 +352,13 @@ class _ReportsSectionState extends State<ReportsSection> {
       "December",
     ];
     selectedYear = currentYear.toString();
-    selectedMonth = DateFormat('MMMM').format(DateTime.now());
+    selectedMonth = "Whole Year";
+    selectedMonthIndex = 0;
     selectedFilter = filterOptions[0];
-    final now = DateTime.now();
-    startDate = DateTime(now.year, now.month, 1);
-    endDate = DateTime(now.year, now.month + 1, 0);
     _fetchPeopleList();
   }
 
   Future<void> _fetchPeopleList() async {
-    setState(() {
-      widget.onLoadingChanged(true);
-    });
     try {
       final querySnapshot =
           await FirebaseFirestore.instance.collection('donors').get();
@@ -371,28 +367,23 @@ class _ReportsSectionState extends State<ReportsSection> {
           .where((name) => name != null && name.isNotEmpty)
           .toSet()
           .toList()
-          .cast<String>();
-      uniquePeople.sort();
-      print('Fetched people: $uniquePeople'); // Debug log
+          .cast<String>()
+        ..sort();
       setState(() {
         peopleList = ['All People', ...uniquePeople];
-        // Only reset selectedPerson if current value is invalid
         if (!peopleList.contains(selectedPerson)) {
           selectedPerson = 'All People';
         }
       });
       if (uniquePeople.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No donors found in Firebase.'),
-          ),
+          const SnackBar(content: Text('No donors found.')),
         );
       }
     } catch (e) {
-      print('Error fetching people list: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to fetch people list: $e'),
+          content: Text('Failed to fetch donors: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -400,92 +391,66 @@ class _ReportsSectionState extends State<ReportsSection> {
         peopleList = ['All People'];
         selectedPerson = 'All People';
       });
-    } finally {
-      setState(() {
-        widget.onLoadingChanged(false);
-      });
-    }
-  }
-
-  Future<void> _selectDateRange(BuildContext context) async {
-    final initialDateRange = DateTimeRange(
-      start: startDate ?? DateTime.now(),
-      end: endDate ?? DateTime.now().add(const Duration(days: 7)),
-    );
-    final DateTimeRange? pickedDateRange = await showDateRangePicker(
-      context: context,
-      initialDateRange: initialDateRange,
-      firstDate: DateTime(2010),
-      lastDate: DateTime(2030),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFF00A699),
-              onPrimary: Colors.white,
-              onSurface: Colors.black,
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (pickedDateRange != null) {
-      setState(() {
-        startDate = pickedDateRange.start;
-        endDate = pickedDateRange.end;
-      });
     }
   }
 
   Future<List<Map<String, dynamic>>> _fetchPayments() async {
+    setState(() {
+      _isLoadingPreview = true;
+    });
     widget.onLoadingChanged(true);
     try {
       final List<Map<String, dynamic>> payments = [];
       final donorSnapshot =
           await FirebaseFirestore.instance.collection('donors').get();
-      final allDonors = donorSnapshot.docs
-          .map((doc) =>
-              {'id': doc.id, 'name': doc['name'] as String? ?? 'Unknown'})
-          .toList();
 
+      List<Map<String, dynamic>> donorsToProcess = [];
       if (selectedPerson != 'All People') {
-        // Filter for a specific person
-        final donor = allDonors.firstWhere(
-          (d) => d['name'] == selectedPerson,
-          orElse: () => {'id': '', 'name': ''},
-        );
-        if (donor['id']!.isEmpty) {
-          return [];
-        }
+        final matchingDocs = donorSnapshot.docs
+            .where((doc) => doc['name'] == selectedPerson)
+            .toList();
+        if (matchingDocs.isEmpty) return [];
+        donorsToProcess.add({
+          'id': matchingDocs.first.id,
+          'name': selectedPerson,
+        });
+      } else {
+        donorsToProcess = donorSnapshot.docs
+            .map((doc) => {
+                  'id': doc.id,
+                  'name': doc['name'] as String? ?? 'Unknown',
+                })
+            .toList();
+      }
 
-        // Query paymentStatus for the donor
+      for (var donor in donorsToProcess) {
         Query<Map<String, dynamic>> query = FirebaseFirestore.instance
             .collection('donors')
             .doc(donor['id'])
-            .collection('paymentStatus');
+            .collection('paymentStatus')
+            .where('year', isEqualTo: selectedYear);
 
-        // Apply date or month/year filter
-        if (useDateRange && startDate != null && endDate != null) {
-          final startTimestamp = Timestamp.fromDate(startDate!);
-          final endTimestamp =
-              Timestamp.fromDate(endDate!.add(const Duration(days: 1)));
-          query = query
-              .where('timestamp', isGreaterThanOrEqualTo: startTimestamp)
-              .where('timestamp', isLessThan: endTimestamp);
-        } else {
-          query = query.where('year', isEqualTo: selectedYear);
-          if (selectedMonth != "Whole Year") {
-            query = query.where('month', isEqualTo: selectedMonth);
-          }
+        if (useAdvancedFilters && useMonthRange) {
+          query = FirebaseFirestore.instance
+              .collection('donors')
+              .doc(donor['id'])
+              .collection('paymentStatus')
+              .where('year', isEqualTo: selectedYear);
+        } else if (selectedMonth != "Whole Year") {
+          query = query.where('month', isEqualTo: months[selectedMonthIndex]);
         }
 
-        // Fetch all relevant payments
         final snapshot = await query.get();
-
-        // Add payments based on filter
         for (var doc in snapshot.docs) {
           final data = doc.data();
+          if (useAdvancedFilters && useMonthRange) {
+            int monthIndex = months.indexOf(data['month']) - 1;
+            if (monthIndex < 0) continue;
+            if (monthIndex < startMonthIndex || monthIndex > endMonthIndex) {
+              continue;
+            }
+          }
+
           if (selectedFilter == "Payment received only" &&
               data['status'] != 'paid') {
             continue;
@@ -494,7 +459,7 @@ class _ReportsSectionState extends State<ReportsSection> {
               data['status'] != 'unpaid') {
             continue;
           }
-          // For "All payments", include both paid and unpaid
+
           payments.add({
             'name': donor['name'],
             'amount': data['amount'],
@@ -506,38 +471,49 @@ class _ReportsSectionState extends State<ReportsSection> {
           });
         }
 
-        // Handle unpaid entries for specific filters
-        if (!useDateRange && selectedMonth != "Whole Year") {
+        if (useAdvancedFilters && useMonthRange) {
           if (selectedFilter == "Payments to be received" ||
               selectedFilter == "All payments") {
-            final hasPaid = snapshot.docs.any((doc) =>
-                doc['month'] == selectedMonth &&
-                doc['year'] == selectedYear &&
-                doc['status'] == 'paid');
-            final hasUnpaid = snapshot.docs.any((doc) =>
-                doc['month'] == selectedMonth &&
-                doc['year'] == selectedYear &&
-                doc['status'] == 'unpaid');
-            if (!hasPaid && !hasUnpaid) {
+            for (int i = startMonthIndex + 1; i <= endMonthIndex + 1; i++) {
+              if (i >= months.length) continue;
+              String month = months[i];
+              bool hasPaidOrUnpaid = snapshot.docs.any((doc) =>
+                  doc['month'] == month && doc['year'] == selectedYear);
+              if (!hasPaidOrUnpaid) {
+                payments.add({
+                  'name': donor['name'],
+                  'amount': null,
+                  'paymentMethod': null,
+                  'month': month,
+                  'year': selectedYear,
+                  'timestamp': null,
+                  'status': 'unpaid',
+                });
+              }
+            }
+          }
+        } else if (selectedMonth != "Whole Year") {
+          if (selectedFilter == "Payments to be received" ||
+              selectedFilter == "All payments") {
+            final currentMonth = months[selectedMonthIndex];
+            final hasAnyPayment = snapshot.docs.any((doc) =>
+                doc['month'] == currentMonth && doc['year'] == selectedYear);
+            if (!hasAnyPayment) {
               payments.add({
                 'name': donor['name'],
                 'amount': null,
                 'paymentMethod': null,
-                'month': selectedMonth,
+                'month': currentMonth,
                 'year': selectedYear,
                 'timestamp': null,
                 'status': 'unpaid',
               });
             }
           }
-        }
-
-        // Handle "Whole Year" for "All payments" and "Payments to be received"
-        if (!useDateRange &&
-            selectedMonth == "Whole Year" &&
+        } else if (selectedMonth == "Whole Year" &&
             (selectedFilter == "Payments to be received" ||
                 selectedFilter == "All payments")) {
-          const months = [
+          const monthsWithoutWhole = [
             'January',
             'February',
             'March',
@@ -551,16 +527,10 @@ class _ReportsSectionState extends State<ReportsSection> {
             'November',
             'December',
           ];
-          final paidMonths = snapshot.docs
-              .where((doc) => doc['status'] == 'paid')
-              .map((doc) => doc['month'] as String?)
-              .toSet();
-          final unpaidMonths = snapshot.docs
-              .where((doc) => doc['status'] == 'unpaid')
-              .map((doc) => doc['month'] as String?)
-              .toSet();
-          for (var month in months) {
-            if (!paidMonths.contains(month) && !unpaidMonths.contains(month)) {
+          final existingMonths =
+              snapshot.docs.map((doc) => doc['month'] as String?).toSet();
+          for (var month in monthsWithoutWhole) {
+            if (!existingMonths.contains(month)) {
               payments.add({
                 'name': donor['name'],
                 'amount': null,
@@ -570,125 +540,6 @@ class _ReportsSectionState extends State<ReportsSection> {
                 'timestamp': null,
                 'status': 'unpaid',
               });
-            }
-          }
-        }
-      } else {
-        // Handle all donors
-        for (var donor in allDonors) {
-          // Query paymentStatus for the donor
-          Query<Map<String, dynamic>> query = FirebaseFirestore.instance
-              .collection('donors')
-              .doc(donor['id'])
-              .collection('paymentStatus');
-
-          // Apply date or month/year filter
-          if (useDateRange && startDate != null && endDate != null) {
-            final startTimestamp = Timestamp.fromDate(startDate!);
-            final endTimestamp =
-                Timestamp.fromDate(endDate!.add(const Duration(days: 1)));
-            query = query
-                .where('timestamp', isGreaterThanOrEqualTo: startTimestamp)
-                .where('timestamp', isLessThan: endTimestamp);
-          } else {
-            query = query.where('year', isEqualTo: selectedYear);
-            if (selectedMonth != "Whole Year") {
-              query = query.where('month', isEqualTo: selectedMonth);
-            }
-          }
-
-          // Fetch all relevant payments
-          final snapshot = await query.get();
-
-          // Add payments based on filter
-          for (var doc in snapshot.docs) {
-            final data = doc.data();
-            if (selectedFilter == "Payment received only" &&
-                data['status'] != 'paid') {
-              continue;
-            }
-            if (selectedFilter == "Payments to be received" &&
-                data['status'] != 'unpaid') {
-              continue;
-            }
-            // For "All payments", include both paid and unpaid
-            payments.add({
-              'name': donor['name'],
-              'amount': data['amount'],
-              'paymentMethod': data['paymentMethod'],
-              'month': data['month'],
-              'year': data['year'],
-              'timestamp': data['timestamp'],
-              'status': data['status'],
-            });
-          }
-
-          // Handle unpaid entries for specific filters
-          if (!useDateRange && selectedMonth != "Whole Year") {
-            if (selectedFilter == "Payments to be received" ||
-                selectedFilter == "All payments") {
-              final hasPaid = snapshot.docs.any((doc) =>
-                  doc['month'] == selectedMonth &&
-                  doc['year'] == selectedYear &&
-                  doc['status'] == 'paid');
-              final hasUnpaid = snapshot.docs.any((doc) =>
-                  doc['month'] == selectedMonth &&
-                  doc['year'] == selectedYear &&
-                  doc['status'] == 'unpaid');
-              if (!hasPaid && !hasUnpaid) {
-                payments.add({
-                  'name': donor['name'],
-                  'amount': null,
-                  'paymentMethod': null,
-                  'month': selectedMonth,
-                  'year': selectedYear,
-                  'timestamp': null,
-                  'status': 'unpaid',
-                });
-              }
-            }
-          }
-
-          // Handle "Whole Year" for "All payments" and "Payments to be received"
-          if (!useDateRange &&
-              selectedMonth == "Whole Year" &&
-              (selectedFilter == "Payments to be received" ||
-                  selectedFilter == "All payments")) {
-            const months = [
-              'January',
-              'February',
-              'March',
-              'April',
-              'May',
-              'June',
-              'July',
-              'August',
-              'September',
-              'October',
-              'November',
-              'December',
-            ];
-            final paidMonths = snapshot.docs
-                .where((doc) => doc['status'] == 'paid')
-                .map((doc) => doc['month'] as String?)
-                .toSet();
-            final unpaidMonths = snapshot.docs
-                .where((doc) => doc['status'] == 'unpaid')
-                .map((doc) => doc['month'] as String?)
-                .toSet();
-            for (var month in months) {
-              if (!paidMonths.contains(month) &&
-                  !unpaidMonths.contains(month)) {
-                payments.add({
-                  'name': donor['name'],
-                  'amount': null,
-                  'paymentMethod': null,
-                  'month': month,
-                  'year': selectedYear,
-                  'timestamp': null,
-                  'status': 'unpaid',
-                });
-              }
             }
           }
         }
@@ -702,33 +553,305 @@ class _ReportsSectionState extends State<ReportsSection> {
           backgroundColor: Colors.red,
         ),
       );
-      print(e);
       return [];
     } finally {
+      setState(() {
+        _isLoadingPreview = false;
+      });
       widget.onLoadingChanged(false);
+    }
+  }
+
+  Future<void> _generateAllPeoplePDF() async {
+    setState(() {
+      _isLoadingPDF = true;
+      widget.onLoadingChanged(true);
+    });
+    try {
+      final pdf = pw.Document();
+      final dateFormat = DateFormat('dd MMMM yyyy');
+      final currentDate = dateFormat.format(DateTime.now());
+
+      final donorSnapshot =
+          await FirebaseFirestore.instance.collection('donors').get();
+      final donors = donorSnapshot.docs
+          .map((doc) => {
+                'id': doc.id,
+                'name': doc['name'] as String? ?? 'Unknown',
+                'amount': (doc['amount'] as num?)?.toDouble() ?? 0.0,
+              })
+          .toList()
+        ..sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4.portrait,
+          margin: const pw.EdgeInsets.all(20),
+          header: (pw.Context context) {
+            return pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 10),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(
+                            'DONOR MONTHLY OBLIGATIONS',
+                            style: pw.TextStyle(
+                              fontSize: 20,
+                              fontWeight: pw.FontWeight.bold,
+                              color: PdfColors.teal,
+                            ),
+                          ),
+                          pw.Text(
+                            'Year $selectedYear',
+                            style: pw.TextStyle(
+                              fontSize: 14,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      pw.Text(
+                        'Generated: $currentDate',
+                        style: const pw.TextStyle(
+                          fontSize: 10,
+                          color: PdfColors.grey700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  pw.SizedBox(height: 5),
+                  pw.Divider(color: PdfColors.teal, thickness: 1),
+                ],
+              ),
+            );
+          },
+          footer: (pw.Context context) {
+            return pw.Container(
+              margin: const pw.EdgeInsets.only(top: 10),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text(
+                    'PMJ App - Donor Monthly Obligations',
+                    style: const pw.TextStyle(
+                      fontSize: 8,
+                      color: PdfColors.grey700,
+                    ),
+                  ),
+                  pw.Text(
+                    'Page ${context.pageNumber} of ${context.pagesCount}',
+                    style: const pw.TextStyle(
+                      fontSize: 8,
+                      color: PdfColors.grey700,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+          build: (pw.Context context) {
+            return [
+              pw.Text(
+                'Donor Monthly Obligations',
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.teal,
+                ),
+              ),
+              pw.SizedBox(height: 5),
+              pw.Table(
+                border: pw.TableBorder.all(color: PdfColors.grey400),
+                columnWidths: {
+                  0: const pw.FixedColumnWidth(50), // S.No.
+                  1: const pw.FlexColumnWidth(3), // Person
+                  2: const pw.FlexColumnWidth(2), // Monthly Amount
+                },
+                defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+                children: [
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(color: PdfColors.teal),
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(3),
+                        child: pw.Center(
+                          child: pw.Text(
+                            'S.No.',
+                            style: pw.TextStyle(
+                              color: PdfColors.white,
+                              fontWeight: pw.FontWeight.bold,
+                              fontSize: 9,
+                            ),
+                          ),
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(3),
+                        child: pw.Center(
+                          child: pw.Text(
+                            'Person',
+                            style: pw.TextStyle(
+                              color: PdfColors.white,
+                              fontWeight: pw.FontWeight.bold,
+                              fontSize: 9,
+                            ),
+                          ),
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(3),
+                        child: pw.Center(
+                          child: pw.Text(
+                            'Monthly Amount',
+                            style: pw.TextStyle(
+                              color: PdfColors.white,
+                              fontWeight: pw.FontWeight.bold,
+                              fontSize: 9,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  ...donors.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final donor = entry.value;
+                    final name = donor['name'] ?? 'Unknown';
+                    final monthlyAmount = donor['amount']?.toString();
+                    return pw.TableRow(
+                      children: [
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(3),
+                          child: pw.Center(
+                            child: pw.Text(
+                              '${index + 1}',
+                              style: const pw.TextStyle(fontSize: 9),
+                              textAlign: pw.TextAlign.center,
+                            ),
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 3,
+                          ),
+                          child: pw.Text(
+                            '$name',
+                            style: const pw.TextStyle(fontSize: 9),
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(3),
+                          child: pw.Center(
+                            child: pw.Text(
+                              '$monthlyAmount',
+                              style: const pw.TextStyle(fontSize: 9),
+                              textAlign: pw.TextAlign.center,
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
+                ],
+              ),
+              pw.SizedBox(height: 10),
+              pw.Container(
+                padding: const pw.EdgeInsets.all(8),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.grey400),
+                  borderRadius:
+                      const pw.BorderRadius.all(pw.Radius.circular(4)),
+                ),
+                child: pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'Note: ',
+                      style: pw.TextStyle(
+                          fontWeight: pw.FontWeight.bold, fontSize: 9),
+                    ),
+                    pw.Expanded(
+                      child: pw.Text(
+                        'This report lists the fixed monthly payment obligations for all donors for $selectedYear.',
+                        style: pw.TextStyle(fontSize: 9),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ];
+          },
+        ),
+      );
+
+      final directory = await getTemporaryDirectory();
+      final file = File(
+          '${directory.path}/donor_monthly_obligations_${selectedYear}.pdf');
+      await file.writeAsBytes(await pdf.save());
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'Donor Monthly Obligations - $selectedYear',
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('PDF generated and shared successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to generate PDF: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isLoadingPDF = false;
+        widget.onLoadingChanged(false);
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Stack(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  TextButton(
-                    onPressed: _isLoading ? null : _fetchPeopleList,
-                    child: const Text(
-                      'Refresh Users',
+              TextButton(
+                onPressed: _isLoadingPDF
+                    ? null // Disable button while loading
+                    : () async {
+                        setState(() {
+                          _isLoadingPDF = true; // Start loading
+                        });
+                        try {
+                          await _generateAllPeoplePDF();
+                        } finally {
+                          setState(() {
+                            _isLoadingPDF = false; // Stop loading
+                          });
+                        }
+                      },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      "See Monthly Donor List",
                       style: TextStyle(
                         fontSize: 12,
                         color: Color(0xFF00A699),
@@ -736,328 +859,426 @@ class _ReportsSectionState extends State<ReportsSection> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    if (_isLoadingPDF) ...[
+                      const SizedBox(width: 8),
+                      const SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Color(0xFF00A699)),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    useAdvancedFilters = !useAdvancedFilters;
+                    if (!useAdvancedFilters) {
+                      useMonthRange = false;
+                      selectedMonthIndex = 0;
+                      selectedMonth = "Whole Year";
+                    }
+                  });
+                },
+                child: Text(
+                  useAdvancedFilters
+                      ? 'Use Simple Filters'
+                      : 'Use Advanced Filters',
+                  style: const TextStyle(
+                    color: Color(0xFF00A699),
+                    fontFamily: "Inter",
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                   ),
-                  TextButton(
-                    onPressed: () {
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (useAdvancedFilters)
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xffF2F2F3),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                children: [
+                  Checkbox(
+                    value: useMonthRange,
+                    activeColor: const Color(0xFF00A699),
+                    onChanged: (value) {
                       setState(() {
-                        useAdvancedFilters = !useAdvancedFilters;
+                        useMonthRange = value ?? false;
                       });
                     },
-                    child: Text(
-                      useAdvancedFilters
-                          ? 'Use Simple Filters'
-                          : 'Use Advanced Filters',
-                      style: const TextStyle(
-                        color: Color(0xFF00A699),
-                        fontFamily: "Inter",
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
+                  ),
+                  const Text(
+                    'Use Month Range',
+                    style: TextStyle(
+                      fontFamily: "Inter",
+                      fontWeight: FontWeight.w400,
+                      fontSize: 12,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              if (useAdvancedFilters)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xffF2F2F3),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Row(
-                    children: [
-                      Checkbox(
-                        value: useDateRange,
-                        activeColor: const Color(0xFF00A699),
-                        onChanged: (value) {
-                          setState(() {
-                            useDateRange = value ?? false;
-                          });
-                        },
-                      ),
-                      const Text(
-                        'Use Date Range',
-                        style: TextStyle(
-                          fontFamily: "Inter",
-                          fontWeight: FontWeight.w400,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              if (useAdvancedFilters && useDateRange)
-                GestureDetector(
-                  onTap: () => _selectDateRange(context),
+            ),
+          if (useAdvancedFilters && useMonthRange)
+            Row(
+              children: [
+                Expanded(
                   child: Container(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 12, horizontal: 16),
+                    margin: const EdgeInsets.only(bottom: 16, right: 8),
                     decoration: BoxDecoration(
                       color: const Color(0xffF2F2F3),
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(color: const Color(0xFFE0E0E0)),
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          startDate != null && endDate != null
-                              ? '${DateFormat('dd MMM yyyy').format(startDate!)} - ${DateFormat('dd MMM yyyy').format(endDate!)}'
-                              : 'Select Date Range',
-                          style: const TextStyle(
-                            fontFamily: "Inter",
-                            fontWeight: FontWeight.w400,
-                            fontSize: 12,
+                    child: DropdownButtonFormField<int>(
+                      value: startMonthIndex,
+                      isExpanded: true,
+                      dropdownColor: Colors.white,
+                      elevation: 1,
+                      items: List.generate(months.length - 1, (index) {
+                        return DropdownMenuItem<int>(
+                          value: index,
+                          child: Text(
+                            months[index + 1],
+                            style: const TextStyle(
+                              fontFamily: "Inter",
+                              fontWeight: FontWeight.w400,
+                              fontSize: 12,
+                            ),
                           ),
+                        );
+                      }),
+                      onChanged: (int? newValue) {
+                        if (newValue != null) {
+                          setState(() {
+                            startMonthIndex = newValue;
+                            if (startMonthIndex > endMonthIndex) {
+                              endMonthIndex = startMonthIndex;
+                            }
+                          });
+                        }
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'From',
+                        labelStyle: TextStyle(
+                          fontSize: 12,
+                          fontFamily: "Inter",
                         ),
-                        const Icon(Icons.calendar_today, size: 16),
-                      ],
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                        border: InputBorder.none,
+                      ),
                     ),
                   ),
                 ),
-              if (!useAdvancedFilters || !useDateRange)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          color: Color(0xffF2F2F3),
-                          borderRadius: BorderRadius.all(Radius.circular(4)),
-                        ),
-                        child: DropdownButtonFormField<String>(
-                          value: selectedYear,
-                          isExpanded: true,
-                          dropdownColor: Colors.white,
-                          elevation: 1,
-                          items: years.map((String year) {
-                            return DropdownMenuItem<String>(
-                              value: year,
-                              child: Text(
-                                year,
-                                style: const TextStyle(
-                                  fontFamily: "Inter",
-                                  fontWeight: FontWeight.w400,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                          onChanged: (String? newValue) {
-                            setState(() {
-                              selectedYear = newValue!;
-                            });
-                          },
-                          decoration: const InputDecoration(
-                            contentPadding:
-                                EdgeInsets.symmetric(horizontal: 12),
-                            border: InputBorder.none,
+                Expanded(
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 16, left: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xffF2F2F3),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: const Color(0xFFE0E0E0)),
+                    ),
+                    child: DropdownButtonFormField<int>(
+                      value: endMonthIndex,
+                      isExpanded: true,
+                      dropdownColor: Colors.white,
+                      elevation: 1,
+                      items: List.generate(months.length - 1, (index) {
+                        final isDisabled = index < startMonthIndex;
+                        return DropdownMenuItem<int>(
+                          enabled: !isDisabled,
+                          value: index,
+                          child: Text(
+                            months[index + 1],
+                            style: TextStyle(
+                              fontFamily: "Inter",
+                              fontWeight: FontWeight.w400,
+                              fontSize: 12,
+                              color: isDisabled ? Colors.grey[400] : null,
+                            ),
                           ),
+                        );
+                      }),
+                      onChanged: (int? newValue) {
+                        if (newValue != null) {
+                          setState(() {
+                            endMonthIndex = newValue;
+                          });
+                        }
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'To',
+                        labelStyle: TextStyle(
+                          fontSize: 12,
+                          fontFamily: "Inter",
                         ),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                        border: InputBorder.none,
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          color: Color(0xffF2F2F3),
-                          borderRadius: BorderRadius.all(Radius.circular(4)),
-                        ),
-                        child: DropdownButtonFormField<String>(
-                          value: selectedMonth,
-                          items: months.map((String month) {
-                            return DropdownMenuItem<String>(
-                              value: month,
-                              child: Text(
-                                month,
-                                style: const TextStyle(
-                                  fontFamily: "Inter",
-                                  fontWeight: FontWeight.w400,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                          onChanged: (String? newValue) {
-                            setState(() {
-                              selectedMonth = newValue!;
-                            });
-                          },
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            contentPadding:
-                                EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                ),
+              ],
+            ),
+          if (!useAdvancedFilters || !useMonthRange)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: Color(0xffF2F2F3),
+                      borderRadius: BorderRadius.all(Radius.circular(4)),
+                    ),
+                    child: DropdownButtonFormField<String>(
+                      value: selectedYear,
+                      isExpanded: true,
+                      dropdownColor: Colors.white,
+                      elevation: 1,
+                      items: years.map((String year) {
+                        return DropdownMenuItem<String>(
+                          value: year,
+                          child: Text(
+                            year,
+                            style: const TextStyle(
+                              fontFamily: "Inter",
+                              fontWeight: FontWeight.w400,
+                              fontSize: 12,
+                            ),
                           ),
-                          isExpanded: true,
-                          dropdownColor: Colors.white,
-                          elevation: 1,
-                        ),
+                        );
+                      }).toList(),
+                      onChanged: (String? newValue) {
+                        if (newValue != null) {
+                          setState(() {
+                            selectedYear = newValue;
+                          });
+                        }
+                      },
+                      decoration: const InputDecoration(
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                        border: InputBorder.none,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: Color(0xffF2F2F3),
+                      borderRadius: BorderRadius.all(Radius.circular(4)),
+                    ),
+                    child: DropdownButtonFormField<int>(
+                      value: selectedMonthIndex,
+                      items: List.generate(months.length, (index) {
+                        return DropdownMenuItem<int>(
+                          value: index,
+                          child: Text(
+                            months[index],
+                            style: const TextStyle(
+                              fontFamily: "Inter",
+                              fontWeight: FontWeight.w400,
+                              fontSize: 12,
+                            ),
+                          ),
+                        );
+                      }),
+                      onChanged: (int? newValue) {
+                        if (newValue != null) {
+                          setState(() {
+                            selectedMonthIndex = newValue;
+                            selectedMonth = months[newValue];
+                          });
+                        }
+                      },
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                      isExpanded: true,
+                      dropdownColor: Colors.white,
+                      elevation: 1,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          const SizedBox(height: 16),
+          Container(
+            decoration: const BoxDecoration(
+              color: Color(0xffF2F2F3),
+              borderRadius: BorderRadius.all(Radius.circular(4)),
+            ),
+            child: DropdownButtonFormField<String>(
+              value: selectedPerson,
+              items: peopleList.map((String person) {
+                return DropdownMenuItem<String>(
+                  value: person,
+                  child: Text(
+                    person,
+                    style: const TextStyle(
+                      fontFamily: "Inter",
+                      fontWeight: FontWeight.w400,
+                      fontSize: 12,
+                    ),
+                  ),
+                );
+              }).toList(),
+              onChanged: (String? newValue) {
+                if (newValue != null) {
+                  setState(() {
+                    selectedPerson = newValue;
+                  });
+                }
+              },
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(horizontal: 12),
+              ),
+              isExpanded: true,
+              dropdownColor: Colors.white,
+              elevation: 1,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            decoration: const BoxDecoration(
+              color: Color(0xffF2F2F3),
+              borderRadius: BorderRadius.all(Radius.circular(4)),
+            ),
+            child: DropdownButtonFormField<String>(
+              value: selectedFilter,
+              items: filterOptions.map((String filter) {
+                return DropdownMenuItem<String>(
+                  value: filter,
+                  child: Text(
+                    filter,
+                    style: const TextStyle(
+                      fontFamily: "Inter",
+                      fontWeight: FontWeight.w400,
+                      fontSize: 12,
+                    ),
+                  ),
+                );
+              }).toList(),
+              onChanged: (String? newValue) {
+                if (newValue != null) {
+                  setState(() {
+                    selectedFilter = newValue;
+                  });
+                }
+              },
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(horizontal: 12),
+              ),
+              isExpanded: true,
+              dropdownColor: Colors.white,
+              elevation: 1,
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 50,
+            child: ElevatedButton(
+              onPressed: _isLoadingPreview
+                  ? null
+                  : () async {
+                      setState(() {
+                        _isLoadingPreview = true;
+                      });
+                      try {
+                        final payments = await _fetchPayments();
+                        if (payments.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                  'No payments found for the selected filters'),
+                            ),
+                          );
+                          return;
+                        }
+
+                        String displayMonth;
+                        if (useAdvancedFilters && useMonthRange) {
+                          displayMonth =
+                              "${months[startMonthIndex + 1]} - ${months[endMonthIndex + 1]}";
+                        } else {
+                          displayMonth = months[selectedMonthIndex];
+                        }
+
+                        Navigator.push(
+                          context,
+                          SlidingPageTransitionLR(
+                            page: ReportPreviewPage(
+                              payments: payments,
+                              selectedYear: selectedYear,
+                              selectedMonth: displayMonth,
+                              selectedFilter: selectedFilter,
+                              selectedPerson: selectedPerson,
+                            ),
+                          ),
+                        );
+                      } finally {
+                        setState(() {
+                          _isLoadingPreview = false;
+                        });
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00A699),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Preview Report',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white,
+                      fontFamily: "Inter",
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (_isLoadingPreview) ...[
+                    const SizedBox(width: 8),
+                    const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
                     ),
                   ],
-                ),
-              const SizedBox(height: 16),
-              Container(
-                decoration: const BoxDecoration(
-                  color: Color(0xffF2F2F3),
-                  borderRadius: BorderRadius.all(Radius.circular(4)),
-                ),
-                child: DropdownButtonFormField<String>(
-                  value: selectedPerson,
-                  items: peopleList.map((String person) {
-                    return DropdownMenuItem<String>(
-                      value: person,
-                      child: Text(
-                        person,
-                        style: const TextStyle(
-                          fontFamily: "Inter",
-                          fontWeight: FontWeight.w400,
-                          fontSize: 12,
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (String? newValue) {
-                    setState(() {
-                      selectedPerson = newValue!;
-                    });
-                  },
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12),
-                  ),
-                  isExpanded: true,
-                  dropdownColor: Colors.white,
-                  elevation: 1,
-                ),
+                ],
               ),
-              const SizedBox(height: 16),
-              Container(
-                decoration: const BoxDecoration(
-                  color: Color(0xffF2F2F3),
-                  borderRadius: BorderRadius.all(Radius.circular(4)),
-                ),
-                child: DropdownButtonFormField<String>(
-                  value: selectedFilter,
-                  items: filterOptions.map((String filter) {
-                    return DropdownMenuItem<String>(
-                      value: filter,
-                      child: Text(
-                        filter,
-                        style: const TextStyle(
-                          fontFamily: "Inter",
-                          fontWeight: FontWeight.w400,
-                          fontSize: 12,
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (String? newValue) {
-                    setState(() {
-                      selectedFilter = newValue!;
-                    });
-                  },
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12),
-                  ),
-                  isExpanded: true,
-                  dropdownColor: Colors.white,
-                  elevation: 1,
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _isLoading
-                      ? null
-                      : () async {
-                          setState(() {
-                            _isLoading = true;
-                          });
-                          try {
-                            final payments = await _fetchPayments();
-                            if (payments.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                      'No payments found for the selected filters'),
-                                ),
-                              );
-                              return;
-                            }
-                            Navigator.push(
-                              context,
-                              SlidingPageTransitionLR(
-                                page: ReportPreviewPage(
-                                  payments: payments,
-                                  selectedYear: useDateRange
-                                      ? "${DateFormat('yyyy').format(startDate!)} - ${DateFormat('yyyy').format(endDate!)}"
-                                      : selectedYear,
-                                  selectedMonth: useDateRange
-                                      ? "${DateFormat('MMM dd').format(startDate!)} - ${DateFormat('MMM dd').format(endDate!)}"
-                                      : selectedMonth,
-                                  selectedFilter: selectedFilter,
-                                  selectedPerson: selectedPerson,
-                                ),
-                              ),
-                            );
-                          } finally {
-                            setState(() {
-                              _isLoading = false;
-                            });
-                          }
-                        },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00A699),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'Preview Report',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white,
-                          fontFamily: "Inter",
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      if (_isLoading) ...[
-                        const SizedBox(width: 8),
-                        // Spacing between text and indicator
-                        const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
+            ),
           ),
+          const SizedBox(height: 16),
         ],
       ),
     );
   }
 }
 
-class ReportPreviewPage extends StatelessWidget {
+class ReportPreviewPage extends StatefulWidget {
   final List<Map<String, dynamic>> payments;
   final String selectedYear;
   final String selectedMonth;
@@ -1073,44 +1294,29 @@ class ReportPreviewPage extends StatelessWidget {
     required this.selectedPerson,
   });
 
-  int _monthToNumberForSorting(String month) {
-    const monthMap = {
-      'January': 1,
-      'February': 2,
-      'March': 3,
-      'April': 4,
-      'May': 5,
-      'June': 6,
-      'July': 7,
-      'August': 8,
-      'September': 9,
-      'October': 10,
-      'November': 11,
-      'December': 12,
-      'Unknown': 0,
-    };
-    return monthMap[month] ?? 0;
-  }
+  @override
+  State<ReportPreviewPage> createState() => _ReportPreviewPageState();
+}
 
-  List<Map<String, dynamic>> _sortPaymentsByMonth(
-      List<Map<String, dynamic>> payments) {
-    final sortedPayments = List<Map<String, dynamic>>.from(payments);
-    sortedPayments.sort((a, b) {
-      final monthA = _monthToNumberForSorting(a['month'] ?? 'Unknown');
-      final monthB = _monthToNumberForSorting(b['month'] ?? 'Unknown');
-      return monthA.compareTo(monthB);
-    });
-    return sortedPayments;
-  }
+class _ReportPreviewPageState extends State<ReportPreviewPage> {
+  int _currentPage = 1;
+  final int _itemsPerPage = 10;
 
   double _calculateTotalAmount() {
-    return payments.fold(0.0, (sum, payment) {
+    return widget.payments.fold(0.0, (sum, payment) {
       if (payment['status'] == 'paid') {
         final amount = (payment['amount'] as num?)?.toDouble() ?? 0.0;
         return sum + amount;
       }
       return sum;
     });
+  }
+
+  List<Map<String, dynamic>> _sortPaymentsByName(
+      List<Map<String, dynamic>> payments) {
+    return List.from(payments)
+      ..sort(
+          (a, b) => (a['name'] ?? 'Unknown').compareTo(b['name'] ?? 'Unknown'));
   }
 
   Future<void> _generateAndDownloadPDF(BuildContext context) async {
@@ -1135,22 +1341,29 @@ class ReportPreviewPage extends StatelessWidget {
                       pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
-                          pw.Text('PAYMENT REPORT',
-                              style: pw.TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: pw.FontWeight.bold,
-                                  color: PdfColors.teal)),
                           pw.Text(
-                            '$selectedMonth $selectedYear',
+                            'PAYMENT REPORT',
                             style: pw.TextStyle(
-                                fontSize: 16, fontWeight: pw.FontWeight.bold),
+                              fontSize: 24,
+                              fontWeight: pw.FontWeight.bold,
+                              color: PdfColors.teal,
+                            ),
+                          ),
+                          pw.Text(
+                            '${widget.selectedMonth} ${widget.selectedYear}',
+                            style: pw.TextStyle(
+                              fontSize: 16,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
                       pw.Text(
                         'Generated: $currentDate',
                         style: const pw.TextStyle(
-                            fontSize: 12, color: PdfColors.grey700),
+                          fontSize: 12,
+                          color: PdfColors.grey700,
+                        ),
                       ),
                     ],
                   ),
@@ -1169,19 +1382,24 @@ class ReportPreviewPage extends StatelessWidget {
                   pw.Text(
                     'PMJ App - Payment Report',
                     style: const pw.TextStyle(
-                        fontSize: 10, color: PdfColors.grey700),
+                      fontSize: 10,
+                      color: PdfColors.grey700,
+                    ),
                   ),
                   pw.Text(
                     'Page ${context.pageNumber} of ${context.pagesCount}',
                     style: const pw.TextStyle(
-                        fontSize: 10, color: PdfColors.grey700),
+                      fontSize: 10,
+                      color: PdfColors.grey700,
+                    ),
                   ),
                 ],
               ),
             );
           },
           build: (pw.Context context) {
-            if (selectedMonth == "Whole Year") {
+            if (widget.selectedMonth.contains('-') ||
+                widget.selectedMonth == "Whole Year") {
               return _buildWholeYearTable();
             } else {
               return _buildSingleMonthTable();
@@ -1192,13 +1410,13 @@ class ReportPreviewPage extends StatelessWidget {
 
       final directory = await getTemporaryDirectory();
       final file = File(
-          '${directory.path}/payment_report_${selectedMonth == "Whole Year" ? "All_Months" : selectedMonth}_${selectedYear}_${selectedPerson.replaceAll(' ', '_')}.pdf');
+          '${directory.path}/payment_report_${widget.selectedMonth == "Whole Year" ? "All_Months" : widget.selectedMonth}_${widget.selectedYear}_${widget.selectedPerson.replaceAll(' ', '_')}.pdf');
       await file.writeAsBytes(await pdf.save());
 
       await Share.shareXFiles(
         [XFile(file.path)],
         text:
-            'Payment Report for ${selectedMonth == "Whole Year" ? "All Months" : selectedMonth} $selectedYear - $selectedPerson',
+            'Payment Report for ${widget.selectedMonth == "Whole Year" ? "All Months" : widget.selectedMonth} ${widget.selectedYear} - ${widget.selectedPerson}',
       );
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1214,20 +1432,19 @@ class ReportPreviewPage extends StatelessWidget {
           backgroundColor: Colors.red,
         ),
       );
-      print(e);
     }
   }
 
   List<pw.Widget> _buildWholeYearTable() {
-    final uniqueNames = payments
+    final uniqueNames = widget.payments
         .map((p) => p['name'] as String?)
         .where((name) => name != null)
         .toSet()
         .toList()
         .cast<String>()
-      ..sort(); // Sort names alphabetically
+      ..sort();
 
-    final months = [
+    const months = [
       'January',
       'February',
       'March',
@@ -1239,13 +1456,14 @@ class ReportPreviewPage extends StatelessWidget {
       'September',
       'October',
       'November',
-      'December'
+      'December',
     ];
 
     final paymentStatus = <String, Map<String, String>>{};
     for (var name in uniqueNames) {
       paymentStatus[name] = {};
-      final userPayments = payments.where((p) => p['name'] == name);
+      final userPayments =
+          widget.payments.where((p) => p['name'] == name).toList();
       for (var payment in userPayments) {
         final month = payment['month'] as String?;
         final status = payment['status'] as String?;
@@ -1265,10 +1483,14 @@ class ReportPreviewPage extends StatelessWidget {
         child: pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Text('Filter: $selectedFilter',
-                style: const pw.TextStyle(fontSize: 12)),
-            pw.Text('Person: $selectedPerson',
-                style: const pw.TextStyle(fontSize: 12)),
+            pw.Text(
+              'Filter: ${widget.selectedFilter}',
+              style: const pw.TextStyle(fontSize: 12),
+            ),
+            pw.Text(
+              'Person: ${widget.selectedPerson}',
+              style: const pw.TextStyle(fontSize: 12),
+            ),
           ],
         ),
       ),
@@ -1285,51 +1507,60 @@ class ReportPreviewPage extends StatelessWidget {
       pw.Table(
         border: pw.TableBorder.all(color: PdfColors.grey400),
         columnWidths: {
-          0: const pw.FixedColumnWidth(40), // S.No. column
-          1: const pw.FixedColumnWidth(100), // Person column
+          0: const pw.FixedColumnWidth(50), // Increased width for S.No.
+          1: const pw.FixedColumnWidth(120), // Increased width for Person
           for (int i = 0; i < months.length; i++)
-            i + 2: const pw.FixedColumnWidth(50), // Month columns
+            i + 2: const pw.FixedColumnWidth(70), // Increased width for months
         },
+        defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
         children: [
           pw.TableRow(
             decoration: const pw.BoxDecoration(color: PdfColors.teal),
             children: [
               pw.Container(
-                padding: const pw.EdgeInsets.all(8),
+                padding:
+                    const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                 alignment: pw.Alignment.center,
                 child: pw.Text(
-                  'S.No.',
+                  'No',
                   style: pw.TextStyle(
                     color: PdfColors.white,
                     fontWeight: pw.FontWeight.bold,
-                    fontSize: 10,
+                    fontSize: 9,
                   ),
+                  textAlign: pw.TextAlign.center,
                 ),
               ),
               pw.Container(
-                padding: const pw.EdgeInsets.all(8),
+                padding:
+                    const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                 alignment: pw.Alignment.center,
                 child: pw.Text(
                   'Person',
                   style: pw.TextStyle(
                     color: PdfColors.white,
                     fontWeight: pw.FontWeight.bold,
-                    fontSize: 10,
+                    fontSize: 9,
+                  ),
+                  textAlign: pw.TextAlign.center,
+                ),
+              ),
+              ...months.map(
+                (month) => pw.Container(
+                  padding:
+                      const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  alignment: pw.Alignment.center,
+                  child: pw.Text(
+                    month.substring(0, 3),
+                    style: pw.TextStyle(
+                      color: PdfColors.white,
+                      fontWeight: pw.FontWeight.bold,
+                      fontSize: 9,
+                    ),
+                    textAlign: pw.TextAlign.center,
                   ),
                 ),
               ),
-              ...months.map((month) => pw.Container(
-                    padding: const pw.EdgeInsets.all(8),
-                    alignment: pw.Alignment.center,
-                    child: pw.Text(
-                      month.substring(0, 3), // Abbreviated month
-                      style: pw.TextStyle(
-                        color: PdfColors.white,
-                        fontWeight: pw.FontWeight.bold,
-                        fontSize: 10,
-                      ),
-                    ),
-                  )),
             ],
           ),
           ...uniqueNames.asMap().entries.map((entry) {
@@ -1338,27 +1569,34 @@ class ReportPreviewPage extends StatelessWidget {
             return pw.TableRow(
               children: [
                 pw.Container(
-                  padding: const pw.EdgeInsets.all(8),
+                  padding:
+                      const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                   alignment: pw.Alignment.center,
                   child: pw.Text(
                     '${index + 1}',
-                    style: const pw.TextStyle(fontSize: 8),
+                    style: const pw.TextStyle(fontSize: 7),
+                    textAlign: pw.TextAlign.center,
+                    softWrap: false, // Prevent text wrapping
                   ),
                 ),
                 pw.Container(
-                  padding: const pw.EdgeInsets.all(8),
+                  padding:
+                      const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                   alignment: pw.Alignment.centerLeft,
                   child: pw.Text(
                     name,
-                    style: const pw.TextStyle(fontSize: 8),
+                    style: const pw.TextStyle(fontSize: 7),
+                    textAlign: pw.TextAlign.left,
+                    softWrap: false, // Prevent text wrapping
                   ),
                 ),
                 ...months.map((month) {
                   final status = paymentStatus[name]![month];
-                  if (selectedFilter == "Payment received only") {
+                  if (widget.selectedFilter == "Payment received only") {
                     if (status == 'paid') {
                       return pw.Container(
-                        padding: const pw.EdgeInsets.all(8),
+                        padding: const pw.EdgeInsets.symmetric(
+                            vertical: 8, horizontal: 4),
                         alignment: pw.Alignment.center,
                         decoration: pw.BoxDecoration(
                           color: PdfColors.green,
@@ -1366,47 +1604,58 @@ class ReportPreviewPage extends StatelessWidget {
                         ),
                         child: pw.Text(
                           'Paid',
-                          style: const pw.TextStyle(
+                          style: pw.TextStyle(
                             color: PdfColors.white,
-                            fontSize: 8,
+                            fontSize: 7,
+                            fontWeight: pw.FontWeight.bold,
                           ),
+                          textAlign: pw.TextAlign.center,
+                          softWrap: false,
                         ),
                       );
                     } else {
                       return pw.Container(
-                        padding: const pw.EdgeInsets.all(8),
+                        padding: const pw.EdgeInsets.symmetric(
+                            vertical: 8, horizontal: 4),
                         alignment: pw.Alignment.center,
                         child: pw.Text(
                           '',
-                          style: const pw.TextStyle(fontSize: 8),
+                          style: const pw.TextStyle(fontSize: 7),
+                          textAlign: pw.TextAlign.center,
                         ),
                       );
                     }
-                  } else if (selectedFilter == "Payments to be received") {
+                  } else if (widget.selectedFilter ==
+                      "Payments to be received") {
                     if (status == 'unpaid') {
                       return pw.Container(
-                        padding: const pw.EdgeInsets.all(8),
+                        padding: const pw.EdgeInsets.symmetric(
+                            vertical: 8, horizontal: 4),
                         alignment: pw.Alignment.center,
                         child: pw.Text(
                           'Unpaid',
-                          style: const pw.TextStyle(
+                          style: pw.TextStyle(
                             color: PdfColors.red,
-                            fontSize: 8,
+                            fontSize: 7,
+                            fontWeight: pw.FontWeight.bold,
                           ),
+                          textAlign: pw.TextAlign.center,
+                          softWrap: false,
                         ),
                       );
                     } else {
                       return pw.Container(
-                        padding: const pw.EdgeInsets.all(8),
+                        padding: const pw.EdgeInsets.symmetric(
+                            vertical: 8, horizontal: 4),
                         alignment: pw.Alignment.center,
                         child: pw.Text(
                           '',
-                          style: const pw.TextStyle(fontSize: 8),
+                          style: const pw.TextStyle(fontSize: 7),
+                          textAlign: pw.TextAlign.center,
                         ),
                       );
                     }
                   } else {
-                    // "All payments"
                     final displayText = status == 'paid'
                         ? 'Paid'
                         : status == 'unpaid'
@@ -1418,7 +1667,8 @@ class ReportPreviewPage extends StatelessWidget {
                             ? PdfColors.red
                             : PdfColors.black;
                     return pw.Container(
-                      padding: const pw.EdgeInsets.all(6),
+                      padding: const pw.EdgeInsets.symmetric(
+                          vertical: 8, horizontal: 4),
                       alignment: pw.Alignment.center,
                       decoration: status == 'paid'
                           ? pw.BoxDecoration(
@@ -1430,9 +1680,11 @@ class ReportPreviewPage extends StatelessWidget {
                         displayText,
                         style: pw.TextStyle(
                           color: displayColor,
-                          fontSize: 6,
+                          fontSize: 7,
                           fontWeight: pw.FontWeight.bold,
                         ),
+                        textAlign: pw.TextAlign.center,
+                        softWrap: false,
                       ),
                     );
                   }
@@ -1447,7 +1699,7 @@ class ReportPreviewPage extends StatelessWidget {
 
   List<pw.Widget> _buildSingleMonthTable() {
     final totalAmount = _calculateTotalAmount();
-    final sortedPayments = _sortPaymentsByMonth(payments);
+    final sortedPayments = _sortPaymentsByName(widget.payments);
 
     return [
       pw.Container(
@@ -1465,25 +1717,35 @@ class ReportPreviewPage extends StatelessWidget {
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('Report Details',
-                        style: pw.TextStyle(
-                            fontWeight: pw.FontWeight.bold, fontSize: 14)),
+                    pw.Text(
+                      'Report Details',
+                      style: pw.TextStyle(
+                        fontWeight: pw.FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
                     pw.SizedBox(height: 8),
-                    pw.Text('Filter: $selectedFilter'),
-                    pw.Text('Person: $selectedPerson'),
+                    pw.Text('Filter: ${widget.selectedFilter}'),
+                    pw.Text('Person: ${widget.selectedPerson}'),
                   ],
                 ),
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
                   children: [
-                    pw.Text('Summary',
-                        style: pw.TextStyle(
-                            fontWeight: pw.FontWeight.bold, fontSize: 14)),
+                    pw.Text(
+                      'Summary',
+                      style: pw.TextStyle(
+                        fontWeight: pw.FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
                     pw.SizedBox(height: 8),
                     pw.Text(
-                        'Total Payments: ${payments.where((p) => p['status'] == 'paid').length}'),
-                    pw.Text('Total Amount: ${totalAmount.toStringAsFixed(0)}',
-                        style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                        'Total Payments: ${widget.payments.where((p) => p['status'] == 'paid').length}'),
+                    pw.Text(
+                      'Total Amount: ${totalAmount.toStringAsFixed(0)}',
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                    ),
                   ],
                 ),
               ],
@@ -1492,74 +1754,112 @@ class ReportPreviewPage extends StatelessWidget {
         ),
       ),
       pw.SizedBox(height: 20),
-      pw.Text('Payment Details',
-          style: pw.TextStyle(
-              fontSize: 16,
-              fontWeight: pw.FontWeight.bold,
-              color: PdfColors.teal)),
+      pw.Text(
+        'Payment Details',
+        style: pw.TextStyle(
+          fontSize: 16,
+          fontWeight: pw.FontWeight.bold,
+          color: PdfColors.teal,
+        ),
+      ),
       pw.SizedBox(height: 10),
       pw.Table(
         border: pw.TableBorder.all(color: PdfColors.grey400),
         columnWidths: {
-          0: const pw.FixedColumnWidth(100), // Name column
+          0: const pw.FixedColumnWidth(120), // Name
+          1: const pw.FixedColumnWidth(80), // Amount
+          2: const pw.FixedColumnWidth(100), // Payment Method
+          3: const pw.FixedColumnWidth(100), // Payment For
+          4: const pw.FixedColumnWidth(80), // Date Paid
+          5: const pw.FixedColumnWidth(80), // Status
         },
-        defaultColumnWidth: const pw.IntrinsicColumnWidth(),
+        defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
         children: [
           pw.TableRow(
             decoration: const pw.BoxDecoration(color: PdfColors.teal),
             children: [
               pw.Container(
-                padding: const pw.EdgeInsets.all(4),
+                padding:
+                    const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                 alignment: pw.Alignment.center,
                 child: pw.Text(
                   'Name',
                   style: pw.TextStyle(
-                      color: PdfColors.white, fontWeight: pw.FontWeight.bold),
+                    color: PdfColors.white,
+                    fontWeight: pw.FontWeight.bold,
+                    fontSize: 9,
+                  ),
+                  textAlign: pw.TextAlign.center,
                 ),
               ),
               pw.Container(
-                padding: const pw.EdgeInsets.all(4),
+                padding:
+                    const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                 alignment: pw.Alignment.center,
                 child: pw.Text(
                   'Amount',
                   style: pw.TextStyle(
-                      color: PdfColors.white, fontWeight: pw.FontWeight.bold),
+                    color: PdfColors.white,
+                    fontWeight: pw.FontWeight.bold,
+                    fontSize: 9,
+                  ),
+                  textAlign: pw.TextAlign.center,
                 ),
               ),
               pw.Container(
-                padding: const pw.EdgeInsets.all(4),
+                padding:
+                    const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                 alignment: pw.Alignment.center,
                 child: pw.Text(
                   'Payment Method',
                   style: pw.TextStyle(
-                      color: PdfColors.white, fontWeight: pw.FontWeight.bold),
+                    color: PdfColors.white,
+                    fontWeight: pw.FontWeight.bold,
+                    fontSize: 9,
+                  ),
+                  textAlign: pw.TextAlign.center,
                 ),
               ),
               pw.Container(
-                padding: const pw.EdgeInsets.all(4),
+                padding:
+                    const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                 alignment: pw.Alignment.center,
                 child: pw.Text(
                   'Payment For',
                   style: pw.TextStyle(
-                      color: PdfColors.white, fontWeight: pw.FontWeight.bold),
+                    color: PdfColors.white,
+                    fontWeight: pw.FontWeight.bold,
+                    fontSize: 9,
+                  ),
+                  textAlign: pw.TextAlign.center,
                 ),
               ),
               pw.Container(
-                padding: const pw.EdgeInsets.all(4),
+                padding:
+                    const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                 alignment: pw.Alignment.center,
                 child: pw.Text(
                   'Date Paid',
                   style: pw.TextStyle(
-                      color: PdfColors.white, fontWeight: pw.FontWeight.bold),
+                    color: PdfColors.white,
+                    fontWeight: pw.FontWeight.bold,
+                    fontSize: 9,
+                  ),
+                  textAlign: pw.TextAlign.center,
                 ),
               ),
               pw.Container(
-                padding: const pw.EdgeInsets.all(4),
+                padding:
+                    const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                 alignment: pw.Alignment.center,
                 child: pw.Text(
                   'Status',
                   style: pw.TextStyle(
-                      color: PdfColors.white, fontWeight: pw.FontWeight.bold),
+                    color: PdfColors.white,
+                    fontWeight: pw.FontWeight.bold,
+                    fontSize: 9,
+                  ),
+                  textAlign: pw.TextAlign.center,
                 ),
               ),
             ],
@@ -1579,58 +1879,77 @@ class ReportPreviewPage extends StatelessWidget {
             return pw.TableRow(
               children: [
                 pw.Container(
-                  padding: const pw.EdgeInsets.all(4),
+                  padding:
+                      const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                   alignment: pw.Alignment.centerLeft,
                   child: pw.Text(
                     payment['name'] ?? 'Unknown',
-                    style: const pw.TextStyle(fontSize: 8),
+                    style: const pw.TextStyle(fontSize: 7),
+                    textAlign: pw.TextAlign.left,
+                    softWrap: false,
                   ),
                 ),
                 pw.Container(
-                  padding: const pw.EdgeInsets.all(4),
+                  padding:
+                      const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                   alignment: pw.Alignment.centerRight,
                   child: pw.Text(
                     payment['status'] == 'paid'
                         ? '${(payment['amount'] as num?)?.toStringAsFixed(0) ?? '0'}'
                         : '-',
-                    style: const pw.TextStyle(fontSize: 8),
+                    style: const pw.TextStyle(fontSize: 7),
+                    textAlign: pw.TextAlign.right,
+                    softWrap: false,
                   ),
                 ),
                 pw.Container(
-                  padding: const pw.EdgeInsets.all(4),
+                  padding:
+                      const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                   alignment: pw.Alignment.center,
                   child: pw.Text(
                     payment['status'] == 'paid'
                         ? (payment['paymentMethod'] ?? 'Unknown')
                         : '-',
-                    style: const pw.TextStyle(fontSize: 8),
+                    style: const pw.TextStyle(fontSize: 7),
+                    textAlign: pw.TextAlign.center,
+                    softWrap: false,
                   ),
                 ),
                 pw.Container(
-                  padding: const pw.EdgeInsets.all(4),
+                  padding:
+                      const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                   alignment: pw.Alignment.center,
                   child: pw.Text(
                     paymentFor,
-                    style: const pw.TextStyle(fontSize: 8),
+                    style: const pw.TextStyle(fontSize: 7),
+                    textAlign: pw.TextAlign.center,
+                    softWrap: false,
                   ),
                 ),
                 pw.Container(
-                  padding: const pw.EdgeInsets.all(4),
+                  padding:
+                      const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                   alignment: pw.Alignment.center,
                   child: pw.Text(
                     payment['status'] == 'paid' ? datePaid : '-',
-                    style: const pw.TextStyle(fontSize: 8),
+                    style: const pw.TextStyle(fontSize: 7),
+                    textAlign: pw.TextAlign.center,
+                    softWrap: false,
                   ),
                 ),
                 pw.Container(
-                  padding: const pw.EdgeInsets.all(4),
+                  padding:
+                      const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                   alignment: pw.Alignment.center,
                   child: pw.Text(
                     status,
                     style: pw.TextStyle(
-                      fontSize: 8,
+                      fontSize: 7,
                       color: status == 'Paid' ? PdfColors.green : PdfColors.red,
+                      fontWeight: pw.FontWeight.bold,
                     ),
+                    textAlign: pw.TextAlign.center,
+                    softWrap: false,
                   ),
                 ),
               ],
@@ -1648,11 +1967,14 @@ class ReportPreviewPage extends StatelessWidget {
         child: pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            pw.Text('Note: ',
-                style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+            pw.Text(
+              'Note: ',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            ),
             pw.Expanded(
               child: pw.Text(
-                  'This is an auto-generated report created by PMJ Application. For any queries regarding this report, please contact support.'),
+                'This is an auto-generated report created by PMJ Application. For any queries regarding this report, please contact support.',
+              ),
             ),
           ],
         ),
@@ -1663,301 +1985,325 @@ class ReportPreviewPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final totalAmount = _calculateTotalAmount();
-    final sortedPayments = _sortPaymentsByName(payments); // Updated sorting
-    final screenWidth = MediaQuery.of(context).size.width;
+    final sortedPayments = _sortPaymentsByName(widget.payments);
+    final totalItems = sortedPayments.length;
+    final totalPages = (totalItems / _itemsPerPage).ceil();
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    final endIndex = (_currentPage * _itemsPerPage).clamp(0, totalItems);
+    final currentPagePayments = sortedPayments.sublist(startIndex, endIndex);
 
     return Scaffold(
-        appBar: AppBar(
-          title: Text(
-            'Report - ${selectedMonth == "Whole Year" ? "All Months" : selectedMonth} $selectedYear',
-            style: const TextStyle(
-              fontFamily: "Inter",
-              fontWeight: FontWeight.w600,
-              fontSize: 16,
-            ),
+      appBar: AppBar(
+        title: Text(
+          'Report - ${widget.selectedMonth == "Whole Year" ? "All Months" : widget.selectedMonth} ${widget.selectedYear}',
+          style: const TextStyle(
+            fontFamily: "Inter",
+            fontWeight: FontWeight.w600,
+            fontSize: 16,
           ),
-          backgroundColor: Colors.white,
-          elevation: 0,
-          iconTheme: const IconThemeData(color: Color(0xFF00A699)),
         ),
-        body: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Heading Row
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Flexible(
-                    child: Text(
-                      'Filter: $selectedFilter',
-                      style: const TextStyle(
-                        fontFamily: "Inter",
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Color(0xFF00A699)),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Flexible(
+                  child: Text(
+                    'Filter: ${widget.selectedFilter}',
+                    style: const TextStyle(
+                      fontFamily: "Inter",
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
                     ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(width: 16),
-                  Flexible(
-                    child: Text(
-                      'Person: $selectedPerson',
-                      style: const TextStyle(
-                        fontFamily: "Inter",
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(width: 16),
+                Flexible(
+                  child: Text(
+                    'Person: ${widget.selectedPerson}',
+                    style: const TextStyle(
+                      fontFamily: "Inter",
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
                     ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // Payment Table with Vertical and Horizontal Scrolling
-              Expanded(
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.vertical,
                 child: SingleChildScrollView(
-                  scrollDirection: Axis.vertical,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(minWidth: screenWidth),
-                      child: DataTable(
-                        columnSpacing: 16,
-                        headingRowColor:
-                            WidgetStateProperty.all(Colors.grey[100]),
-                        dataRowMinHeight: 48,
-                        dataRowMaxHeight: 48,
-                        columns: const [
-                          DataColumn(
-                            label: Text(
-                              'S.No.',
-                              style: TextStyle(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    columnSpacing: 16,
+                    headingRowColor: WidgetStateProperty.all(Colors.grey[100]),
+                    dataRowMinHeight: 48,
+                    dataRowMaxHeight: 48,
+                    columns: const [
+                      DataColumn(
+                        label: Text(
+                          'S.No.',
+                          style: TextStyle(
+                            fontFamily: "Inter",
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      DataColumn(
+                        label: Text(
+                          'Name',
+                          style: TextStyle(
+                            fontFamily: "Inter",
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      DataColumn(
+                        label: Text(
+                          'Amount',
+                          style: TextStyle(
+                            fontFamily: "Inter",
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      DataColumn(
+                        label: Text(
+                          'Method',
+                          style: TextStyle(
+                            fontFamily: "Inter",
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      DataColumn(
+                        label: Text(
+                          'Payment For',
+                          style: TextStyle(
+                            fontFamily: "Inter",
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      DataColumn(
+                        label: Text(
+                          'Date Paid',
+                          style: TextStyle(
+                            fontFamily: "Inter",
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      DataColumn(
+                        label: Text(
+                          'Status',
+                          style: TextStyle(
+                            fontFamily: "Inter",
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                    rows: currentPagePayments.asMap().entries.map((entry) {
+                      final index = entry.key + startIndex;
+                      final payment = entry.value;
+                      final timestamp =
+                          (payment['timestamp'] as Timestamp?)?.toDate();
+                      final datePaid = timestamp != null
+                          ? "${timestamp.day.toString().padLeft(2, '0')}.${timestamp.month.toString().padLeft(2, '0')}.${timestamp.year}"
+                          : '-';
+                      final paymentFor =
+                          "${payment['month'] ?? 'Unknown'} ${payment['year'] ?? 'Unknown'}";
+                      final status = payment['status'] == 'paid'
+                          ? 'Paid'
+                          : payment['status'] == 'unpaid'
+                              ? 'Unpaid'
+                              : 'Unknown';
+                      return DataRow(
+                        cells: [
+                          DataCell(
+                            Text(
+                              '${index + 1}',
+                              style: const TextStyle(
                                 fontFamily: "Inter",
-                                fontWeight: FontWeight.w600,
                                 fontSize: 12,
                               ),
                             ),
                           ),
-                          DataColumn(
-                            label: Text(
-                              'Name',
-                              style: TextStyle(
+                          DataCell(
+                            Text(
+                              payment['name'] ?? 'Unknown',
+                              style: const TextStyle(
                                 fontFamily: "Inter",
-                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          DataCell(
+                            Text(
+                              payment['status'] == 'paid'
+                                  ? '${(payment['amount'] as num?)?.toStringAsFixed(0) ?? '0'}'
+                                  : '-',
+                              style: const TextStyle(
+                                fontFamily: "Inter",
                                 fontSize: 12,
                               ),
                             ),
                           ),
-                          DataColumn(
-                            label: Text(
-                              'Amount',
-                              style: TextStyle(
+                          DataCell(
+                            Text(
+                              payment['status'] == 'paid'
+                                  ? (payment['paymentMethod'] ?? 'Unknown')
+                                  : '-',
+                              style: const TextStyle(
                                 fontFamily: "Inter",
-                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          DataCell(
+                            Text(
+                              paymentFor,
+                              style: const TextStyle(
+                                fontFamily: "Inter",
+                                fontSize: 12,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          DataCell(
+                            Text(
+                              payment['status'] == 'paid' ? datePaid : '-',
+                              style: const TextStyle(
+                                fontFamily: "Inter",
                                 fontSize: 12,
                               ),
                             ),
                           ),
-                          DataColumn(
-                            label: Text(
-                              'Method',
+                          DataCell(
+                            Text(
+                              status,
                               style: TextStyle(
                                 fontFamily: "Inter",
-                                fontWeight: FontWeight.w600,
                                 fontSize: 12,
-                              ),
-                            ),
-                          ),
-                          DataColumn(
-                            label: Text(
-                              'Payment For',
-                              style: TextStyle(
-                                fontFamily: "Inter",
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                          DataColumn(
-                            label: Text(
-                              'Date Paid',
-                              style: TextStyle(
-                                fontFamily: "Inter",
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                          DataColumn(
-                            label: Text(
-                              'Status',
-                              style: TextStyle(
-                                fontFamily: "Inter",
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
+                                color: status == 'Paid'
+                                    ? Colors.green
+                                    : Colors.red,
                               ),
                             ),
                           ),
                         ],
-                        rows: sortedPayments.asMap().entries.map((entry) {
-                          final index = entry.key;
-                          final payment = entry.value;
-                          final timestamp =
-                              (payment['timestamp'] as Timestamp?)?.toDate();
-                          final datePaid = timestamp != null
-                              ? "${timestamp.day.toString().padLeft(2, '0')}.${timestamp.month.toString().padLeft(2, '0')}.${timestamp.year}"
-                              : '-';
-                          final paymentFor =
-                              "${payment['month'] ?? 'Unknown'} ${payment['year'] ?? 'Unknown'}";
-                          final status = payment['status'] == 'paid'
-                              ? 'Paid'
-                              : payment['status'] == 'unpaid'
-                                  ? 'Unpaid'
-                                  : 'Unknown';
-                          return DataRow(
-                            cells: [
-                              DataCell(
-                                Text(
-                                  '${index + 1}',
-                                  style: const TextStyle(
-                                    fontFamily: "Inter",
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  payment['name'] ?? 'Unknown',
-                                  style: const TextStyle(
-                                    fontFamily: "Inter",
-                                    fontSize: 12,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  payment['status'] == 'paid'
-                                      ? '${(payment['amount'] as num?)?.toStringAsFixed(0) ?? '0'}'
-                                      : '-',
-                                  style: const TextStyle(
-                                    fontFamily: "Inter",
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  payment['status'] == 'paid'
-                                      ? (payment['paymentMethod'] ?? 'Unknown')
-                                      : '-',
-                                  style: const TextStyle(
-                                    fontFamily: "Inter",
-                                    fontSize: 12,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  paymentFor,
-                                  style: const TextStyle(
-                                    fontFamily: "Inter",
-                                    fontSize: 12,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  payment['status'] == 'paid' ? datePaid : '-',
-                                  style: const TextStyle(
-                                    fontFamily: "Inter",
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  status,
-                                  style: TextStyle(
-                                    fontFamily: "Inter",
-                                    fontSize: 12,
-                                    color: status == 'Paid'
-                                        ? Colors.green
-                                        : Colors.red,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          );
-                        }).toList(),
-                      ),
-                    ),
+                      );
+                    }).toList(),
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-              // Totals Row
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Total Payments: ${widget.payments.where((p) => p['status'] == 'paid').length}',
+                  style: const TextStyle(
+                    fontFamily: "Inter",
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+                Text(
+                  'Total Amount: ${totalAmount.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    fontFamily: "Inter",
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (totalPages > 1)
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back_ios),
+                    onPressed: _currentPage > 1
+                        ? () {
+                            setState(() {
+                              _currentPage--;
+                            });
+                          }
+                        : null,
+                  ),
                   Text(
-                    'Total Payments: ${payments.where((p) => p['status'] == 'paid').length}',
+                    'Page $_currentPage of $totalPages',
                     style: const TextStyle(
                       fontFamily: "Inter",
-                      fontWeight: FontWeight.w600,
                       fontSize: 14,
                     ),
                   ),
-                  Text(
-                    'Total Amount: ${totalAmount.toStringAsFixed(0)}',
-                    style: const TextStyle(
-                      fontFamily: "Inter",
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
+                  IconButton(
+                    icon: const Icon(Icons.arrow_forward_ios),
+                    onPressed: _currentPage < totalPages
+                        ? () {
+                            setState(() {
+                              _currentPage++;
+                            });
+                          }
+                        : null,
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: () async {
-                    await _generateAndDownloadPDF(context);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00A699),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    elevation: 0,
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                onPressed: () async {
+                  await _generateAndDownloadPDF(context);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00A699),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Text(
-                    'Download PDF',
-                    style: TextStyle(
-                      fontFamily: "Inter",
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
+                  elevation: 0,
+                ),
+                child: const Text(
+                  'Download PDF',
+                  style: TextStyle(
+                    fontFamily: "Inter",
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
                   ),
                 ),
               ),
-            ],
-          ),
-        ));
-  }
-
-  // New sorting function for alphabetical order by name
-  List<Map<String, dynamic>> _sortPaymentsByName(
-      List<Map<String, dynamic>> payments) {
-    return List.from(payments)
-      ..sort(
-          (a, b) => (a['name'] ?? 'Unknown').compareTo(b['name'] ?? 'Unknown'));
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
