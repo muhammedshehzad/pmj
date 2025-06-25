@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="default_web_client_id" translatable="false">427530459983-1e8v5qicuth4eedm881ralgmqrlike6c.apps.googleusercontent.com</string>
+    <string name="gcm_defaultSenderId" translatable="false">427530459983</string>
+    <string name="google_api_key" translatable="false">AIzaSyCj8oUbDB1h2ldziveyuafffX_8TXQucy4</string>
+    <string name="google_app_id" translatable="false">1:427530459983:android:287a3e590407fc58f9c33a</string>
+    <string name="google_crash_reporting_api_key" translatable="false">AIzaSyCj8oUbDB1h2ldziveyuafffX_8TXQucy4</string>
+    <string name="google_storage_bucket" translatable="false">pmj-application.firebasestorage.app</string>
+    <string name="project_id" translatable="false">pmj-application</string>
+</resources>
