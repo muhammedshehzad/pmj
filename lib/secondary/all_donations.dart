@@ -9,6 +9,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
 
 class AllDonationsPage extends StatefulWidget {
   @override
@@ -976,8 +980,6 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
     }
   }
 
-
-
   void _showPaymentDetailsDialog(BuildContext context, personHome person) async {
     showDialog(
       context: context,
@@ -1074,13 +1076,13 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
                       child: ElevatedButton(
                         onPressed: () async {
                           try {
-                            final pdfPath = await _generateAndSavePDF(person);
-                            await Share.shareXFiles([XFile(pdfPath)],
+                            final imagePath = await _generateAndSaveImage(person);
+                            await Share.shareXFiles([XFile(imagePath)],
                                 text: 'Donation Receipt for ${person.name}');
                           } catch (e) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('Failed to generate PDF: $e'),
+                                content: Text('Failed to generate receipt: $e'),
                                 backgroundColor: Colors.red,
                               ),
                             );
@@ -1097,7 +1099,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
                           elevation: 0,
                         ),
                         child: const Text(
-                          'Share PDF',
+                          'Share Receipt',
                           style: TextStyle(
                             fontFamily: "Inter",
                             fontWeight: FontWeight.w600,
@@ -1177,63 +1179,254 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
     );
   }
 
-  Future<String> _generateAndSavePDF(personHome person) async {
-    // Creating LaTeX content for the donation receipt
-    final latexContent = r'''
-\documentclass[a4paper,12pt]{article}
-\usepackage[utf8]{inputenc}
-\usepackage{geometry}
-\geometry{a4paper, margin=1in}
-\usepackage{parskip}
-\usepackage{xcolor}
-\definecolor{teal}{RGB}{27,163,161}
+  Future<String> _generateAndSaveImage(personHome person) async {
+    // Create a GlobalKey to capture the widget
+    final GlobalKey receiptKey = GlobalKey();
+    
+    // Fetch donor address from Firestore
+    String donorAddress = '';
+    try {
+      final donorDoc = await FirebaseFirestore.instance
+          .collection('donors')
+          .doc(person.donorId)
+          .get();
+      
+      if (donorDoc.exists) {
+        final donorData = donorDoc.data() as Map<String, dynamic>;
+        donorAddress = donorData['address'] ?? '';
+      }
+    } catch (e) {
+      print('Error fetching donor address: $e');
+    }
+    
+    // Show the receipt in an overlay to render it
+    final overlay = Overlay.of(context);
+    late OverlayEntry overlayEntry;
+    
+    overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        left: -10000, // Position off-screen
+        top: -10000,
+        child: Material(
+          color: Colors.transparent,
+          child: _buildReceiptWidget(person, receiptKey, donorAddress),
+        ),
+      ),
+    );
+    
+    overlay.insert(overlayEntry);
+    
+    // Wait for the widget to render
+    await Future.delayed(const Duration(milliseconds: 100));
+    
+    try {
+      // Capture the widget as an image
+      final boundary = receiptKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      final bytes = byteData!.buffer.asUint8List();
+      
+      // Save image to temporary directory
+      final tempDir = await getTemporaryDirectory();
+      final imageFile = File('${tempDir.path}/PMJ_Receipt_${person.donorId}_${DateTime.now().millisecondsSinceEpoch}.png');
+      await imageFile.writeAsBytes(bytes);
+      
+      return imageFile.path;
+    } finally {
+      // Remove the overlay entry
+      overlayEntry.remove();
+    }
+  }
 
-% Setting up fonts
-\usepackage[T1]{fontenc}
-\usepackage{lmodern}
+  Widget _buildReceiptWidget(personHome person, GlobalKey key, String donorAddress) {
+    return RepaintBoundary(
+      key: key,
+      child: Container(
+        width: 400,
+        height: 300, // 4:3 ratio
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey[300]!, width: 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Text(
+              'PMJ Monthly Donation Receipt',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xff1BA3A1),
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Receipt No: ${person.donorId}_${DateTime.now().millisecondsSinceEpoch}',
+              style: TextStyle(
+                fontSize: 7,
+                color: Colors.grey[600],
+              ),
+            ),
 
-\begin{document}
+            const SizedBox(height: 8),
 
-\begin{center}
-{\Large \textbf{Donation Receipt}} \\
-\vspace{0.5cm}
-{\color{teal} \rule{0.5\textwidth}{0.4pt}}
-\end{center}
+            // Receipt Details
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildSimpleRow('Date:', person.date),
+                  _buildSimpleRow('Name:', person.name),
+                  if (donorAddress.isNotEmpty) _buildSimpleRow('Address:', donorAddress),
+                  _buildSimpleRow('Amount:', '₹${person.amount.toStringAsFixed(0)}'),
+                  _buildSimpleRow('Method:', person.method),
+                  _buildSimpleRow('Month:', person.month),
+                  _buildSimpleRow('Year:', person.year),
+                  _buildSimpleRow('Status:', person.status),
+                ],
+              ),
+            ),
 
-\vspace{0.5cm}
+            // Amount in Words
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Amount in Words:',
+                    style: TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    _numberToWords(person.amount),
+                    style: TextStyle(
+                      fontSize: 8,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
-\begin{tabular}{ll}
-\textbf{Donor Name:} & ''' + person.name + r''' \\
-\textbf{Amount:} & ₹''' + person.amount.toString() + r''' \\
-\textbf{Date:} & ''' + person.date + r''' \\
-\textbf{Payment Method:} & ''' + person.method + r''' \\
-\textbf{Month:} & ''' + person.month + r''' \\
-\textbf{Year:} & ''' + person.year + r''' \\
-\textbf{Status:} & ''' + person.status + r''' \\
-\textbf{Donor ID:} & ''' + person.donorId + r''' \\
-\end{tabular}
+            const SizedBox(height: 6),
 
-\vspace{1cm}
+            // Footer
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Thank you for your donation!',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xff1BA3A1),
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}',
+                      style: TextStyle(
+                        fontSize: 7,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    Text(
+                      '${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')} ${DateTime.now().weekday == 1 ? 'Mon' : DateTime.now().weekday == 2 ? 'Tue' : DateTime.now().weekday == 3 ? 'Wed' : DateTime.now().weekday == 4 ? 'Thu' : DateTime.now().weekday == 5 ? 'Fri' : DateTime.now().weekday == 6 ? 'Sat' : 'Sun'}',
+                      style: TextStyle(
+                        fontSize: 7,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-{\small Thank you for your generous donation!}
+  Widget _buildSimpleRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          Flexible(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 10,
+              ),
+              textAlign: TextAlign.right,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-\end{document}
-''';
-
-    // Save LaTeX content to a temporary .tex file
-    final tempDir = await getTemporaryDirectory();
-    final texFile = File('${tempDir.path}/donation_receipt_${person.donorId}.tex');
-    await texFile.writeAsString(latexContent);
-
-    // Note: In a real implementation, you would compile the LaTeX file to PDF using latexmk.
-    // Since Flutter doesn't natively support LaTeX compilation, you would typically:
-    // 1. Use a server-side service to compile LaTeX to PDF, or
-    // 2. Use a native plugin or external library (not available in this context).
-    // For this example, we'll assume the LaTeX content is saved and can be shared as-is or processed externally.
-
-    // For demonstration, we'll return the path of the .tex file.
-    // In a production app, you'd compile this to PDF using a service or native module.
-    return texFile.path;
+  String _numberToWords(int number) {
+    if (number == 0) return 'Zero Rupees Only';
+    
+    final units = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+    final teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    final tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    
+    String convertLessThanOneThousand(int n) {
+      if (n == 0) return '';
+      
+      if (n < 10) return units[n];
+      if (n < 20) return teens[n - 10];
+      if (n < 100) {
+        return tens[n ~/ 10] + (n % 10 != 0 ? ' ' + units[n % 10] : '');
+      }
+      return units[n ~/ 100] + ' Hundred' + (n % 100 != 0 ? ' and ' + convertLessThanOneThousand(n % 100) : '');
+    }
+    
+    String result = '';
+    int num = number;
+    
+    if (num >= 10000000) {
+      result += convertLessThanOneThousand(num ~/ 10000000) + ' Crore ';
+      num %= 10000000;
+    }
+    if (num >= 100000) {
+      result += convertLessThanOneThousand(num ~/ 100000) + ' Lakh ';
+      num %= 100000;
+    }
+    if (num >= 1000) {
+      result += convertLessThanOneThousand(num ~/ 1000) + ' Thousand ';
+      num %= 1000;
+    }
+    if (num > 0) {
+      result += convertLessThanOneThousand(num);
+    }
+    
+    return result.trim() + ' Rupees Only';
   }
 
   Future<bool> _showDeleteConfirmation(
