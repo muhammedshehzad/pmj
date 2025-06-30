@@ -164,14 +164,12 @@ class _LoginForm extends StatelessWidget {
                         }
                       }
                     },
-                    child: loginProvider.isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : Row(
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text(
-                          'Login',
-                          style: TextStyle(
+                        Text(
+                          loginProvider.isLoading ? 'Logging in' : 'Login',
+                          style: const TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 16,
                           ),
@@ -179,7 +177,16 @@ class _LoginForm extends StatelessWidget {
                         const SizedBox(width: 5),
                         Padding(
                           padding: const EdgeInsets.only(left: 6.0),
-                          child: Image.asset(
+                          child: loginProvider.isLoading
+                              ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2.0,
+                            ),
+                          )
+                              : Image.asset(
                             'lib/assets/images/img_2.png',
                             width: 20,
                             height: 20,

@@ -1,15 +1,27 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
+part 'PeopleListViewHome.g.dart';
 
+@HiveType(typeId: 0)
 class personHome {
+  @HiveField(0)
   final String name;
+  @HiveField(1)
   final String date;
+  @HiveField(2)
   final int amount;
+  @HiveField(3)
   final String donorId;
+  @HiveField(4)
   final String method;
+  @HiveField(5)
   final String month;
+  @HiveField(6)
   final String year;
+  @HiveField(7)
   final String status;
+  @HiveField(8)
   final String? documentPath;
 
   personHome({

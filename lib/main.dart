@@ -5,18 +5,25 @@ import 'package:pmj_application/primary/homePage.dart';
 import 'package:pmj_application/primary/login.dart';
 import 'package:pmj_application/primary/paymentsPage.dart';
 import 'package:pmj_application/primary/splashscreen.dart';
+import 'package:pmj_application/secondary/donations_provider.dart';
 import 'package:pmj_application/secondary/donorAdd.dart';
 import 'package:pmj_application/secondary/donorDetails.dart';
 import 'package:pmj_application/secondary/user_service.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'assets/custom widgets/GPay.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'assets/custom widgets/PeopleListViewHome.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  await Hive.initFlutter();
+  Hive.registerAdapter(personHomeAdapter());
+  await Hive.openBox<personHome>('donationsBox');
+  await Hive.openBox<Map>('donorDetailsBox');
   runApp(
     MultiProvider(
       providers: [
@@ -24,6 +31,7 @@ void main() async {
           create: (context) => NavBarProvider(), child: BottomNavBarExample(),),
         ChangeNotifierProvider(create: (context) => PeopleProvider()),
         ChangeNotifierProvider(create: (_) => PaymentProvider()),
+        ChangeNotifierProvider(create: (_) => DonationsProvider()),
         Provider(create: (_) => UserService()), // Add UserService provider
 
         // Add other providers if necessary

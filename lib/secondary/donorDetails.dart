@@ -7,6 +7,34 @@ import '../assets/custom widgets/logoutpopup.dart';
 import 'editDonor.dart';
 import 'package:flutter/material.dart';
 import 'package:photo_view/photo_view.dart';
+import 'package:hive/hive.dart';
+
+Future<Map<String, dynamic>> fetchDonorData(String donorId) async {
+  final donorDetailsBox = await Hive.openBox<Map>('donorDetailsBox');
+  // Try to get from cache first
+  final cached = donorDetailsBox.get(donorId);
+  if (cached != null) {
+    return Map<String, dynamic>.from(cached);
+  }
+  try {
+    DocumentSnapshot doc = await FirebaseFirestore.instance
+        .collection('donors')
+        .doc(donorId)
+        .get();
+    if (doc.exists) {
+      final data = {
+        'amount': (doc['amount'] as num?)?.toDouble() ?? 0.0,
+      };
+      // Cache in Hive
+      await donorDetailsBox.put(donorId, data);
+      return data;
+    }
+    return {'amount': 0.0};
+  } catch (e) {
+    print('Error fetching donor data: $e');
+    return {'amount': 0.0};
+  }
+}
 
 class donorDetails extends StatefulWidget {
   final String donorId;
@@ -27,19 +55,6 @@ class _donorDetailsState extends State<donorDetails> {
     final currentYear = DateTime.now().year;
     _years = List.generate(5, (index) => (currentYear - index).toString());
     _selectedYear = currentYear.toString(); // Default to current year
-  }
-
-  Future<Map<String, dynamic>?> _fetchDonorData() async {
-    try {
-      DocumentSnapshot doc = await FirebaseFirestore.instance
-          .collection('donors')
-          .doc(widget.donorId)
-          .get();
-      return doc.data() as Map<String, dynamic>?;
-    } catch (e) {
-      print('Error fetching donor data: $e');
-      return null;
-    }
   }
 
   Future<void> _deleteDonor() async {
@@ -191,8 +206,8 @@ class _donorDetailsState extends State<donorDetails> {
           ),
         ),
       ),
-      body: FutureBuilder<Map<String, dynamic>?>(
-        future: _fetchDonorData(),
+      body: FutureBuilder<Map<String, dynamic>>(
+        future: fetchDonorData(widget.donorId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
@@ -761,24 +776,6 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
     }
   }
 
-  Future<Map<String, dynamic>> _fetchDonorData() async {
-    try {
-      DocumentSnapshot doc = await FirebaseFirestore.instance
-          .collection('donors')
-          .doc(widget.donorId)
-          .get();
-      if (doc.exists) {
-        return {
-          'amount': (doc['amount'] as num?)?.toDouble() ?? 0.0,
-        };
-      }
-      return {'amount': 0.0};
-    } catch (e) {
-      print('Error fetching donor data: $e');
-      return {'amount': 0.0};
-    }
-  }
-
   @override
   void dispose() {
     amount.dispose();
@@ -892,7 +889,7 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
                   vertical: 16,
                 ),
                 child: FutureBuilder<Map<String, dynamic>>(
-                  future: _fetchDonorData(),
+                  future: fetchDonorData(widget.donorId),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());

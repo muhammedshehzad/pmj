@@ -13,6 +13,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
+import 'package:provider/provider.dart';
+import 'donations_provider.dart';
 
 class AllDonationsPage extends StatefulWidget {
   @override
@@ -238,74 +240,80 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
   }
 
   Widget _buildDonationsList() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collectionGroup('paymentStatus')
-          .where('status', isEqualTo: 'paid')
-          .orderBy('timestamp', descending: true)
-          .snapshots(),
-      builder: (context, snapshot) {
-        // Handle different error types with specific messages
-        if (snapshot.hasError) {
-          return _buildErrorUI(_getErrorMessage(snapshot.error));
+    return Consumer<DonationsProvider>(
+      builder: (context, provider, child) {
+        if (provider.errorMessage != null) {
+          return _buildErrorUI(provider.errorMessage!);
         }
-
-        // Show shimmer for initial loading
-        if (snapshot.connectionState == ConnectionState.waiting && !_hasInitialData) {
+        if (provider.isLoading) {
           return _buildImprovedShimmerLoading();
         }
-
-        // Handle empty data
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+        if (provider.donations.isEmpty) {
           return _buildEmptyStateUI();
         }
-
-        // Process new data
-        if (snapshot.hasData &&
-            (_latestSnapshot == null ||
-                _latestSnapshot!.docs.length != snapshot.data!.docs.length ||
-                _hasDataChanged(snapshot.data!))) {
-          _latestSnapshot = snapshot.data;
-          _hasInitialData = true;
-
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _processDocumentsAsync(snapshot.data!.docs);
-          });
-        }
-
-        // Show shimmer during processing if no previous data
-        if (_isLoading && _processedDonations.isEmpty) {
-          return _buildImprovedShimmerLoading();
-        }
-
-        // Show error if processing failed
-        if (_errorMessage != null) {
-          return _buildErrorUI(_errorMessage!);
-        }
-
         // Show donation list
-        return _buildDonationListView();
+        List<personHome> filteredDonations = provider.donations.where((person) {
+          if (_searchFilter.isEmpty) return true;
+          return person.name.toLowerCase().contains(_searchFilter) ||
+              person.month.toLowerCase().contains(_searchFilter) ||
+              person.amount.toString().contains(_searchFilter);
+        }).toList();
+        if (filteredDonations.isEmpty && _searchFilter.isNotEmpty) {
+          return _buildNoSearchResultsUI();
+        }
+        return ListView.builder(
+          itemCount: filteredDonations.length,
+          itemBuilder: (context, index) {
+            final person = filteredDonations[index];
+            return Dismissible(
+              key: Key(person.documentPath ?? '${person.donorId}_${person.date}_${person.amount}'),
+              direction: DismissDirection.endToStart,
+              background: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 20.0),
+                margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.delete,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Delete',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontFamily: "Inter",
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              confirmDismiss: (direction) async {
+                return await _showDeleteConfirmation(context, person);
+              },
+              onDismissed: (direction) async {
+                await _handleDonationDeletion(person);
+              },
+              child: PeopleListViewHome(
+                peoplesHome: [person],
+                onTap: (tappedPerson) {
+                  _showPaymentDetailsDialog(context, tappedPerson);
+                },
+              ),
+            );
+          },
+        );
       },
     );
-  }
-
-  bool _hasDataChanged(QuerySnapshot newSnapshot) {
-    if (_latestSnapshot == null) return true;
-
-    // Check if document IDs or modification times have changed
-    final oldDocs = _latestSnapshot!.docs;
-    final newDocs = newSnapshot.docs;
-
-    if (oldDocs.length != newDocs.length) return true;
-
-    for (int i = 0; i < oldDocs.length; i++) {
-      if (oldDocs[i].id != newDocs[i].id ||
-          oldDocs[i].metadata.hasPendingWrites != newDocs[i].metadata.hasPendingWrites) {
-        return true;
-      }
-    }
-
-    return false;
   }
 
   String _getErrorMessage(dynamic error) {
@@ -608,224 +616,6 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
           ],
         ),
       ),
-    );
-  }
-
-  Future<void> _processDocumentsAsync(List<QueryDocumentSnapshot> docs) async {
-    bool showLoadingUI = _processedDonations.isEmpty;
-
-    if (showLoadingUI) {
-      setState(() {
-        _isLoading = true;
-        _totalDocuments = docs.length;
-        _loadedDocuments = 0;
-        _loadingProgress = 0.0;
-        _errorMessage = null;
-      });
-    }
-
-    try {
-      // Extract unique donor IDs
-      Set<String> donorIds = {};
-      for (var doc in docs) {
-        final donorId = doc.reference.parent.parent?.id;
-        if (donorId != null && donorId.isNotEmpty) {
-          donorIds.add(donorId);
-        }
-      }
-
-      // Prefetch donor data with better error handling
-      await _prefetchDonors(donorIds.toList());
-
-      List<personHome> newProcessedDonations = [];
-
-      for (var i = 0; i < docs.length; i++) {
-        try {
-          var doc = docs[i];
-          final data = doc.data() as Map<String, dynamic>?;
-
-          if (data == null) {
-            print('Warning: Document ${doc.id} has null data');
-            continue;
-          }
-
-          final donorId = doc.reference.parent.parent?.id;
-
-          if (donorId != null &&
-              donorId.isNotEmpty &&
-              _donorCache.containsKey(donorId)) {
-            final donorData = _donorCache[donorId]!;
-            final donorName = donorData['name'] ?? 'Unknown Donor';
-
-            newProcessedDonations.add(
-              personHome(
-                name: donorName,
-                date: _formatTimestamp(data['timestamp']),
-                amount: _parseAmount(data['amount']),
-                donorId: donorId,
-                method: data['paymentMethod']?.toString() ?? 'Unknown',
-                month: data['month']?.toString() ?? 'Unknown',
-                year: data['year']?.toString() ?? 'Unknown',
-                status: data['status']?.toString() ?? 'Unpaid',
-                documentPath: doc.reference.path,
-              ),
-            );
-          } else {
-            print('Warning: Donor not found or invalid donorId for document ${doc.id}');
-          }
-        } catch (e) {
-          print('Error processing document ${docs[i].id}: $e');
-          // Continue processing other documents
-        }
-
-        if (showLoadingUI) {
-          _loadedDocuments = i + 1;
-          _loadingController.add(_loadedDocuments / _totalDocuments);
-        }
-
-        // Yield control periodically
-        if (i % 5 == 0) {
-          await Future.delayed(const Duration(milliseconds: 1));
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _processedDonations = newProcessedDonations;
-          _isLoading = false;
-          _errorMessage = null;
-        });
-      }
-    } catch (e) {
-      print('Error in _processDocumentsAsync: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = 'Failed to process donations: ${e.toString()}';
-        });
-      }
-    }
-  }
-
-  int _parseAmount(dynamic amount) {
-    if (amount == null) return 0;
-    if (amount is int) return amount;
-    if (amount is double) return amount.toInt();
-    if (amount is String) {
-      try {
-        return int.parse(amount);
-      } catch (e) {
-        try {
-          return double.parse(amount).toInt();
-        } catch (e) {
-          print('Warning: Could not parse amount: $amount');
-          return 0;
-        }
-      }
-    }
-    return 0;
-  }
-
-  Future<void> _prefetchDonors(List<String> donorIds) async {
-    if (donorIds.isEmpty) return;
-
-    const int batchSize = 10; // Firestore 'in' query limit
-
-    for (int i = 0; i < donorIds.length; i += batchSize) {
-      final end = (i + batchSize < donorIds.length) ? i + batchSize : donorIds.length;
-      final batch = donorIds.sublist(i, end);
-
-      if (batch.isEmpty) continue;
-
-      try {
-        final donorsSnapshot = await FirebaseFirestore.instance
-            .collection('donors')
-            .where(FieldPath.documentId, whereIn: batch)
-            .get(const GetOptions(source: Source.serverAndCache));
-
-        for (var doc in donorsSnapshot.docs) {
-          if (doc.exists && doc.data().isNotEmpty) {
-            _donorCache[doc.id] = doc.data();
-          } else {
-            print('Warning: Donor document ${doc.id} is empty or does not exist');
-          }
-        }
-
-        // Add delay between batches to avoid overwhelming Firestore
-        if (i + batchSize < donorIds.length) {
-          await Future.delayed(const Duration(milliseconds: 50));
-        }
-      } catch (e) {
-        print('Error fetching donors batch $i-$end: $e');
-        // Continue with other batches even if one fails
-      }
-    }
-  }
-
-  Widget _buildDonationListView() {
-    List<personHome> filteredDonations = _processedDonations.where((person) {
-      if (_searchFilter.isEmpty) return true;
-      return person.name.toLowerCase().contains(_searchFilter) ||
-          person.month.toLowerCase().contains(_searchFilter) ||
-          person.amount.toString().contains(_searchFilter);
-    }).toList();
-
-    if (filteredDonations.isEmpty && _searchFilter.isNotEmpty) {
-      return _buildNoSearchResultsUI();
-    }
-
-    return ListView.builder(
-      itemCount: filteredDonations.length,
-      itemBuilder: (context, index) {
-        final person = filteredDonations[index];
-
-        return Dismissible(
-          key: Key(person.documentPath ??
-              '${person.donorId}_${person.date}_${person.amount}'),
-          direction: DismissDirection.endToStart,
-          background: Container(
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: 20.0),
-            margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
-            decoration: BoxDecoration(
-              color: Colors.red,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.delete,
-                  color: Colors.white,
-                  size: 24,
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Delete',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontFamily: "Inter",
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          confirmDismiss: (direction) async {
-            return await _showDeleteConfirmation(context, person);
-          },
-          onDismissed: (direction) async {
-            await _handleDonationDeletion(person);
-          },
-          child: PeopleListViewHome(
-            peoplesHome: [person],
-            onTap: (tappedPerson) {
-              _showPaymentDetailsDialog(context, tappedPerson);
-            },
-          ),
-        );
-      },
     );
   }
 
@@ -1241,192 +1031,209 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
   Widget _buildReceiptWidget(personHome person, GlobalKey key, String donorAddress) {
     return RepaintBoundary(
       key: key,
-      child: Container(
-        width: 400,
-        height: 300, // 4:3 ratio
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey[300]!, width: 1),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Text(
-              'PMJ Monthly Donation Receipt',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xff1BA3A1),
+      child: Center(
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 420),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            // No border radius for sharp edges
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.15),
+                spreadRadius: 1,
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              'Receipt No: ${person.donorId}_${DateTime.now().millisecondsSinceEpoch}',
-              style: TextStyle(
-                fontSize: 7,
-                color: Colors.grey[600],
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // Receipt Details
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _buildSimpleRow('Date:', person.date),
-                  _buildSimpleRow('Name:', person.name),
-                  if (donorAddress.isNotEmpty) _buildSimpleRow('Address:', donorAddress),
-                  _buildSimpleRow('Amount:', '₹${person.amount.toStringAsFixed(0)}'),
-                  _buildSimpleRow('Method:', person.method),
-                  _buildSimpleRow('Month:', person.month),
-                  _buildSimpleRow('Year:', person.year),
-                  _buildSimpleRow('Status:', person.status),
-                ],
-              ),
-            ),
-
-            // Amount in Words
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Amount in Words:',
-                    style: TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Text(
-                    _numberToWords(person.amount),
-                    style: TextStyle(
-                      fontSize: 8,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 6),
-
-            // Footer
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Thank you for your donation!',
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xff1BA3A1),
-                  ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Green Header Section (taller, no border radius)
+              Container(
+                width: double.infinity,
+                height: 130,
+                color: const Color(0xFF41c057),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      '${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}',
-                      style: TextStyle(
-                        fontSize: 7,
-                        color: Colors.grey[600],
+                      'PMJ Monthly Donation Receipt',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.2,
                       ),
+                      textAlign: TextAlign.center,
                     ),
+                    const SizedBox(height: 4),
+                    // Move receipt number closer to heading
                     Text(
-                      '${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')} ${DateTime.now().weekday == 1 ? 'Mon' : DateTime.now().weekday == 2 ? 'Tue' : DateTime.now().weekday == 3 ? 'Wed' : DateTime.now().weekday == 4 ? 'Thu' : DateTime.now().weekday == 5 ? 'Fri' : DateTime.now().weekday == 6 ? 'Sat' : 'Sun'}',
-                      style: TextStyle(
-                        fontSize: 7,
-                        color: Colors.grey[600],
+                      'Receipt No: ${person.donorId}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w400,
+                        letterSpacing: 0.1,
                       ),
                     ),
                   ],
                 ),
-              ],
-            ),
-          ],
+              ),
+
+              // Overlapping Checkmark Icon (bigger)
+              Transform.translate(
+                offset: const Offset(0, -32),
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE0E0E0),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: Colors.white, width: 4),
+                  ),
+                  child: const Icon(
+                    Icons.check,
+                    color: Color(0xFF41c057),
+                    size: 52,
+                  ),
+                ),
+              ),
+
+              // Payment Received Text
+              Transform.translate(
+                offset: const Offset(0, -16),
+                child: const Text(
+                  'Payment Received',
+                  style: TextStyle(
+                    color: Color(0xFF41c057),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.1,
+                  ),
+                ),
+              ),
+
+              // Divider Line
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 32, vertical: 10),
+                height: 1,
+                color: Colors.grey[300],
+              ),
+
+              // Receipt Details (no address)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Column(
+                  children: [
+                    _buildReceiptRow('Date:', person.date),
+                    const SizedBox(height: 8),
+                    _buildReceiptRow('Name:', person.name),
+                    const SizedBox(height: 8),
+                    _buildReceiptRow('Month:', '${person.month} ${person.year}'),
+                    const SizedBox(height: 8),
+                    _buildReceiptRow('Amount', '₹${person.amount.toStringAsFixed(0)}/-', isAmount: true),
+                    const SizedBox(height: 8),
+                    _buildReceiptRow('Payment Method:', person.method),
+                    const SizedBox(height: 18),
+                  ],
+                ),
+              ),
+
+              // Amount in Words Container (column, start)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.symmetric(horizontal: 28),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFeafbe7),
+                  borderRadius: BorderRadius.zero, // No curve
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Amount in words:',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w400,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _numberToWords(person.amount),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        fontStyle: FontStyle.italic,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 22),
+
+              // Footer
+              Text(
+                'Thank you for your donation!',
+                style: TextStyle(
+                  color: const Color(0xFF41c057),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  fontStyle: FontStyle.italic,
+                  letterSpacing: 0.1,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Perakkool Muslim Jama-ath Committee',
+                style: TextStyle(
+                  color: Colors.black,
+                  fontSize: 8,
+                  fontWeight: FontWeight.w400,
+                  letterSpacing: 0.2,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildSimpleRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
+  Widget _buildReceiptRow(String label, String value, {bool isAmount = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: Colors.black87,
+          ),
+        ),
+        Flexible(
+          child: Text(
+            value,
             style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
+              fontSize: 13,
+              fontWeight: isAmount ? FontWeight.bold : FontWeight.w500,
+              color: isAmount ? const Color(0xFF41c057) : Colors.black87,
             ),
+            textAlign: TextAlign.right,
+            overflow: TextOverflow.ellipsis,
           ),
-          Flexible(
-            child: Text(
-              value,
-              style: TextStyle(
-                fontSize: 10,
-              ),
-              textAlign: TextAlign.right,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
-  }
-
-  String _numberToWords(int number) {
-    if (number == 0) return 'Zero Rupees Only';
-    
-    final units = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
-    final teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-    final tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-    
-    String convertLessThanOneThousand(int n) {
-      if (n == 0) return '';
-      
-      if (n < 10) return units[n];
-      if (n < 20) return teens[n - 10];
-      if (n < 100) {
-        return tens[n ~/ 10] + (n % 10 != 0 ? ' ' + units[n % 10] : '');
-      }
-      return units[n ~/ 100] + ' Hundred' + (n % 100 != 0 ? ' and ' + convertLessThanOneThousand(n % 100) : '');
-    }
-    
-    String result = '';
-    int num = number;
-    
-    if (num >= 10000000) {
-      result += convertLessThanOneThousand(num ~/ 10000000) + ' Crore ';
-      num %= 10000000;
-    }
-    if (num >= 100000) {
-      result += convertLessThanOneThousand(num ~/ 100000) + ' Lakh ';
-      num %= 100000;
-    }
-    if (num >= 1000) {
-      result += convertLessThanOneThousand(num ~/ 1000) + ' Thousand ';
-      num %= 1000;
-    }
-    if (num > 0) {
-      result += convertLessThanOneThousand(num);
-    }
-    
-    return result.trim() + ' Rupees Only';
   }
 
   Future<bool> _showDeleteConfirmation(
@@ -1511,5 +1318,39 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
       },
     ) ??
         false;
+  }
+
+  String _numberToWords(int number) {
+    if (number == 0) return 'Zero Rupees Only';
+    final units = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+    final teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    final tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    String convertLessThanOneThousand(int n) {
+      if (n == 0) return '';
+      if (n < 10) return units[n];
+      if (n < 20) return teens[n - 10];
+      if (n < 100) {
+        return tens[n ~/ 10] + (n % 10 != 0 ? ' ' + units[n % 10] : '');
+      }
+      return units[n ~/ 100] + ' Hundred' + (n % 100 != 0 ? ' and ' + convertLessThanOneThousand(n % 100) : '');
+    }
+    String result = '';
+    int num = number;
+    if (num >= 10000000) {
+      result += convertLessThanOneThousand(num ~/ 10000000) + ' Crore ';
+      num %= 10000000;
+    }
+    if (num >= 100000) {
+      result += convertLessThanOneThousand(num ~/ 100000) + ' Lakh ';
+      num %= 100000;
+    }
+    if (num >= 1000) {
+      result += convertLessThanOneThousand(num ~/ 1000) + ' Thousand ';
+      num %= 1000;
+    }
+    if (num > 0) {
+      result += convertLessThanOneThousand(num);
+    }
+    return result.trim() + ' Rupees Only';
   }
 }
