@@ -1,32 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:pmj_application/assets/custom%20widgets/transition.dart';
+import 'package:pmj_application/models/person_model.dart';
+import 'package:pmj_application/secondary/donorDetails.dart';
+import 'package:pmj_application/services/local_database_service.dart';
+import 'package:shimmer/shimmer.dart';
+import '../../services/image_cache_service.dart';
+import 'shimmer_widgets.dart';
 import '../../secondary/donorDetails.dart';
-
-class Person {
-  final String name;
-  final String house;
-  final double amount;
-  final String photoUrl;
-
-  Person({
-    required this.name,
-    required this.house,
-    required this.amount,
-    required this.photoUrl,
-  });
-
-  factory Person.fromFirestore(Map<String, dynamic> data) {
-    return Person(
-      name: data['name'] ?? 'Unknown',
-      house: data['address'] ?? 'No Address',
-      amount: (data['amount'] as num?)?.toDouble() ?? 0.0,
-      photoUrl: data['imageUrl'] ?? '',
-    );
-  }
-}
 
 class PeopleListViewDonor extends StatefulWidget {
   const PeopleListViewDonor({Key? key}) : super(key: key);
@@ -38,21 +20,126 @@ class PeopleListViewDonor extends StatefulWidget {
 class _PeopleListViewDonorState extends State<PeopleListViewDonor> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  final LocalDatabaseService _localDb = LocalDatabaseService();
+  Timer? _searchDebounce;
 
   @override
   void initState() {
     super.initState();
     _searchController.addListener(() {
-      setState(() {
-        _searchQuery = _searchController.text.toLowerCase();
+      final text = _searchController.text;
+      _searchDebounce?.cancel();
+      _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+        if (!mounted) return;
+        setState(() {
+          _searchQuery = text.trim().toLowerCase();
+        });
       });
+    });
+    
+    // Initial sync with Firestore
+    _localDb.syncWithFirestore().catchError((error) {
+      // Handle error silently - we'll still show cached data
+      debugPrint('Error syncing with Firestore: $error');
     });
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  Widget _buildProfileAvatar(Person person) {
+    // Prefer photoUrl; if empty, fallback to imageUrl (legacy field)
+    final effectivePhotoUrl =
+        (person.photoUrl.isNotEmpty ? person.photoUrl : (person.imageUrl ?? ''));
+
+    if (effectivePhotoUrl.isEmpty) {
+      return CircleAvatar(
+        radius: 25,
+        backgroundColor: const Color(0xff1BA3A1),
+        child: Text(
+          person.name.isNotEmpty ? person.name[0].toUpperCase() : '',
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+      );
+    }
+
+    return FutureBuilder<ImageProvider?>(
+      future: ImageCacheService().getImageProvider(effectivePhotoUrl),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Shimmer.fromColors(
+            baseColor: const Color(0xFFE0E0E0),
+            highlightColor: const Color(0xFFF5F5F5),
+            child: const CircleAvatar(
+              radius: 25,
+              backgroundColor: Colors.white,
+            ),
+          );
+        }
+
+        if (snapshot.hasData && snapshot.data != null) {
+          // Fade-in image inside a circular clip
+          return ClipOval(
+            child: SizedBox(
+              width: 50,
+              height: 50,
+              child: Image(
+                image: snapshot.data!,
+                fit: BoxFit.cover,
+                frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                  if (wasSynchronouslyLoaded) {
+                    return child;
+                  }
+                  return AnimatedOpacity(
+                    opacity: frame == null ? 0 : 1,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                    child: child,
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  // On error, fallback to initials
+                  return CircleAvatar(
+                    radius: 25,
+                    backgroundColor: const Color(0xff1BA3A1),
+                    child: Text(
+                      person.name.isNotEmpty ? person.name[0].toUpperCase() : '',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
+        }
+
+        // Fallback to initials if image not available
+        return CircleAvatar(
+          radius: 25,
+          backgroundColor: const Color(0xff1BA3A1),
+          child: Text(
+            person.name.isNotEmpty ? person.name[0].toUpperCase() : '',
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -69,51 +156,57 @@ class _PeopleListViewDonorState extends State<PeopleListViewDonor> {
                 controller: _searchController,
                 keyboardType: TextInputType.multiline,
                 onChanged: (value) {
-                  setState(() {
-                    _searchQuery = value.toLowerCase();
-                  });
+                  // handled by listener with debounce
                 },
-                textAlignVertical: TextAlignVertical.center, // Vertically center the text
-                style: TextStyle(
+                textAlignVertical: TextAlignVertical.center,
+                style: const TextStyle(
                   fontSize: 12,
                   fontFamily: "Inter",
                   fontWeight: FontWeight.w400,
-                  color: Colors.black, // Color for typed text
+                  color: Colors.black,
                 ),
                 decoration: InputDecoration(
                   hintText: 'Search Donor',
-                  hintStyle: TextStyle(
+                  hintStyle: const TextStyle(
                     fontSize: 12,
                     fontFamily: "Inter",
                     fontWeight: FontWeight.w400,
                     color: Color(0xffA7A4AD),
                   ),
-                  suffixIcon: Padding(
-                    padding: const EdgeInsets.all(10.0),
-                    child: SvgPicture.asset(
-                      'lib/assets/images/search.svg',
-                      height: 16,
-                      width: 16,
-                    ),
-                  ),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 0), // Adjust padding to center vertically
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, color: Color(0xff1BA3A1), size: 16),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        )
+                      : Padding(
+                          padding: const EdgeInsets.all(10.0),
+                          child: SvgPicture.asset(
+                            'lib/assets/images/search.svg',
+                            height: 16,
+                            width: 16,
+                          ),
+                        ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(4.0),
-                    borderSide: BorderSide(
+                    borderSide: const BorderSide(
                       color: Color(0xff1BA3A1),
                       width: 2.0,
                     ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(4.0),
-                    borderSide: BorderSide(
+                    borderSide: const BorderSide(
                       color: Color(0xff1BA3A1),
                       width: 2.0,
                     ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(4.0),
-                    borderSide: BorderSide(
+                    borderSide: const BorderSide(
                       color: Color(0xff1BA3A1),
                       width: 1.0,
                     ),
@@ -122,122 +215,85 @@ class _PeopleListViewDonorState extends State<PeopleListViewDonor> {
               ),
             ),
           ),
-          SizedBox(height:7),
+          const SizedBox(height: 7),
           // Donor List
           Expanded(
-            child: StreamBuilder<User?>(
-              stream: FirebaseAuth.instance.authStateChanges(),
-              builder: (context, authSnapshot) {
-                if (authSnapshot.connectionState == ConnectionState.waiting) {
-                  return Center(child: CircularProgressIndicator());
+            child: StreamBuilder<List<Person>>(
+              stream: _localDb.watchPeople(query: _searchQuery),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return DonorListShimmer();
                 }
 
-                if (!authSnapshot.hasData) {
-                  FirebaseAuth.instance.signInAnonymously();
-                  return Center(child: Text('Signing in...'));
+                if (snapshot.hasError) {
+                  return Center(
+                      child: Text('Error loading donors: ${snapshot.error}'));
                 }
 
-                return StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('donors')
-                      .orderBy('name', descending: false) // Sort by name in ascending order (A-Z)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return Center(child: CircularProgressIndicator());
-                    }
+                final people = snapshot.data ?? [];
 
-                    if (snapshot.hasError) {
-                      return Center(child: Text('Error: ${snapshot.error}'));
-                    }
+                if (people.isEmpty) {
+                  return _buildNoSearchResultsUI(_searchQuery);
+                }
 
-                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                      return Center(child: Text('No donors found'));
-                    }
-
-                    final people = snapshot.data!.docs
-                        .map((doc) => Person.fromFirestore(doc.data() as Map<String, dynamic>))
-                        .toList();
-
-                    // Filter the list based on the search query
-                    final filteredPeople = people.where((person) {
-                      final nameMatch = person.name.toLowerCase().contains(_searchQuery);
-                      final amountMatch = person.amount.toString().contains(_searchQuery);
-                      return nameMatch || amountMatch;
-                    }).toList();
-
-                    if (filteredPeople.isEmpty) {
-                      return Center(child: Text('No matching donors found'));
-                    }
-
-                    return ListView.builder(
-                      itemCount: filteredPeople.length,
-                      itemBuilder: (context, index) {
-                        final person = filteredPeople[index];
-                        return GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              SlidingPageTransitionRL(page: donorDetails(
-                                donorId: snapshot.data!.docs
-                                    .firstWhere((doc) =>
-                                Person.fromFirestore(doc.data() as Map<String, dynamic>).name ==
-                                    person.name)
-                                    .id,
-                              )),
-                            );
-                          },
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              radius: 25,
-                              backgroundImage: person.photoUrl.isNotEmpty
-                                  ? NetworkImage(person.photoUrl)
-                                  : null, // Set to null when no photoUrl
-                              backgroundColor: person.photoUrl.isNotEmpty
-                                  ? null
-                                  : Color(0xff1BA3A1), // Use a fallback color when no image
-                              child: person.photoUrl.isEmpty
-                                  ? Text(
-                                person.name.isNotEmpty ? person.name[0].toUpperCase() : '',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              )
-                                  : null, // Show text only when no image
+                return ListView.builder(
+                  itemCount: people.length,
+                  itemBuilder: (context, index) {
+                    final person = people[index];
+                    return GestureDetector(
+                      onTap: () {
+                        if (person.donorId == null || person.donorId!.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Donor details are not available offline yet. Please try again when connected.'),
                             ),
-                            title: Text(
-                              person.name,
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontFamily: "Inter",
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            subtitle: Text(
-                              person.house,
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontFamily: "Inter",
-                                fontWeight: FontWeight.w400,
-                                color: Color(0xff817D8A),
-                              ),
-                            ),
-                            trailing: Padding(
-                              padding: const EdgeInsets.only(left: 22.0),
-                              child: Text(
-                                "₹${person.amount.toStringAsFixed(0)}",
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontFamily: "Inter",
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                          );
+                          return;
+                        }
+                        final targetDonorId = person.donorId!;
+                        Navigator.push(
+                          context,
+                          SlidingPageTransitionRL(
+                            page:donorDetails(
+                              donorId: targetDonorId,
                             ),
                           ),
                         );
                       },
+                      child: ListTile(
+                        leading: Hero(
+                          tag: 'donor_avatar_${person.donorId ?? person.id}',
+                          child: _buildProfileAvatar(person),
+                        ),
+                        title: Text(
+                          person.name,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontFamily: "Inter",
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        subtitle: Text(
+                          person.house,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontFamily: "Inter",
+                            fontWeight: FontWeight.w400,
+                            color: Color(0xff817D8A),
+                          ),
+                        ),
+                        trailing: Padding(
+                          padding: const EdgeInsets.only(left: 22.0),
+                          child: Text(
+                            "₹${person.amount.toStringAsFixed(0)}",
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontFamily: "Inter",
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
                     );
                   },
                 );
@@ -245,6 +301,57 @@ class _PeopleListViewDonorState extends State<PeopleListViewDonor> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildNoSearchResultsUI(String q) {
+    final query = q.trim();
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 110,
+              height: 110,
+              decoration: BoxDecoration(
+                color: const Color(0xff1BA3A1).withOpacity(0.08),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.person_search,
+                size: 56,
+                color: Color(0xff1BA3A1),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              query.isEmpty ? 'No donors available' : 'No donors found',
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Color(0xff1BA3A1),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            if (query.isNotEmpty)
+              Text(
+                "We couldn't find any donors matching \"$query\".",
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey,
+                  fontFamily: 'Inter',
+                ),
+                textAlign: TextAlign.center,
+              ),
+
+          ],
+        ),
       ),
     );
   }

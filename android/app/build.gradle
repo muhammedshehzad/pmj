@@ -6,7 +6,8 @@ apply plugin: "com.google.gms.google-services"
 
 android {
     namespace = "com.example.pmj_application"
-    compileSdk = flutter.compileSdkVersion
+    // Explicitly set compileSdkVersion to ensure compatibility with libraries requiring newer Android attributes (e.g., lStar)
+    compileSdkVersion 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -23,8 +24,9 @@ android {
         applicationId "com.example.pmj_application"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk 23  // Changed from 21 to 23
-        targetSdk flutter.targetSdkVersion
+        minSdkVersion flutter.minSdkVersion  // Changed from 21 to 23
+        // Explicitly set targetSdkVersion for consistency with compileSdkVersion
+        targetSdkVersion 36
         versionCode flutter.versionCode
         versionName flutter.versionName
         multiDexEnabled true

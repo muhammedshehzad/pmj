@@ -2,11 +2,9 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:shimmer/shimmer.dart';
-import '../assets/custom widgets/PeopleListViewHome.dart';
-import '../assets/custom widgets/logoutpopup.dart';
+import 'package:pmj_application/assets/custom widgets/PeopleListViewHome.dart';
+import 'package:pmj_application/assets/custom widgets/logoutpopup.dart';
 import 'dart:io';
-import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:pdf/pdf.dart';
@@ -15,6 +13,13 @@ import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 import 'donations_provider.dart';
+import '../models/person_model.dart';
+import '../services/image_cache_service.dart';
+import '../services/local_database_service.dart';
+import 'deletion_history_page.dart';
+import 'package:shimmer/shimmer.dart';
+import '../assets/custom%20widgets/shimmer_widgets.dart';
+import '../assets/custom widgets/transition.dart';
 
 class AllDonationsPage extends StatefulWidget {
   @override
@@ -27,7 +32,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
   double _loadingProgress = 0.0;
   int _totalDocuments = 0;
   int _loadedDocuments = 0;
-  List<personHome> _processedDonations = [];
+  List<Person> _processedDonations = [];
   QuerySnapshot? _latestSnapshot;
   final _loadingController = StreamController<double>.broadcast();
   String _searchFilter = '';
@@ -35,12 +40,34 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
   String? _errorMessage;
   StreamSubscription<QuerySnapshot>? _donationsSubscription;
   bool _hasInitialData = false;
+  final ScrollController _scrollController = ScrollController();
+  List<Person> _paginatedDonations = [];
+  bool _isPaginating = false;
+  bool _hasMore = true;
+  bool _initialLoading = true;
+  DocumentSnapshot? _lastDocument;
+  static const int _pageSize = 30;
+
+  // Server-assisted search state
+  bool _isSearching = false;
+  bool _searchPaginating = false;
+  bool _searchHasMore = true;
+  DocumentSnapshot? _lastSearchDocument;
+  final List<Person> _searchResults = [];
+  Timer? _searchDebounce;
+
+  // Batched display to avoid piecemeal updates
+  final List<Person> _stagedSearchResults = [];
+  bool _searchPriming = false; // true until first batch committed
+  static const int _searchBatchThreshold = 10;
 
   @override
   void initState() {
     super.initState();
     _setupLoadingController();
     _setupSearchController();
+    _fetchInitialDonations();
+    _scrollController.addListener(_onScroll);
   }
 
   void _setupLoadingController() {
@@ -55,9 +82,29 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
 
   void _setupSearchController() {
     _searchController.addListener(() {
+      _handleSearchChange(_searchController.text);
+    });
+  }
+
+  void _handleSearchChange(String value) {
+    final q = value.trim();
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
       setState(() {
-        _searchFilter = _searchController.text.toLowerCase();
+        _searchFilter = q.toLowerCase();
       });
+      if (_searchFilter.isEmpty) {
+        // Exit search mode
+        setState(() {
+          _isSearching = false;
+          _searchResults.clear();
+          _searchHasMore = true;
+          _lastSearchDocument = null;
+        });
+      } else {
+        // Start server-assisted search
+        _startServerSearch();
+      }
     });
   }
 
@@ -66,7 +113,124 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
     _donationsSubscription?.cancel();
     _loadingController.close();
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      if (_isSearching) {
+        if (!_searchPaginating && _searchHasMore) {
+          _fetchMoreSearchResults();
+        }
+      } else {
+        if (!_isPaginating && _hasMore && !_initialLoading) {
+          _fetchMoreDonations();
+        }
+      }
+    }
+  }
+
+  Future<void> _fetchInitialDonations() async {
+    setState(() {
+      _isPaginating = true;
+      _hasMore = true;
+      _paginatedDonations.clear();
+      _lastDocument = null;
+      _initialLoading = true;
+    });
+    Query query = FirebaseFirestore.instance
+        .collectionGroup('paymentStatus')
+        .where('status', isEqualTo: 'paid')
+        .orderBy('timestamp', descending: true)
+        .limit(_pageSize);
+    QuerySnapshot snapshot = await query.get();
+    await _processPaginatedDocs(snapshot, isInitial: true);
+  }
+
+  Future<void> _fetchMoreDonations() async {
+    if (!_hasMore || _isPaginating) return;
+    setState(() {
+      _isPaginating = true;
+    });
+    Query query = FirebaseFirestore.instance
+        .collectionGroup('paymentStatus')
+        .where('status', isEqualTo: 'paid')
+        .orderBy('timestamp', descending: true)
+        .startAfterDocument(_lastDocument!)
+        .limit(_pageSize);
+    QuerySnapshot snapshot = await query.get();
+    await _processPaginatedDocs(snapshot, isInitial: false);
+  }
+
+  Future<void> _processPaginatedDocs(QuerySnapshot snapshot,
+      {required bool isInitial}) async {
+    if (snapshot.docs.isEmpty) {
+      setState(() {
+        _hasMore = false;
+        _isPaginating = false;
+        _initialLoading = false;
+      });
+      return;
+    }
+    Set<String> donorIds = {};
+    for (var doc in snapshot.docs) {
+      final donorId = doc.reference.parent.parent?.id;
+      if (donorId != null && donorId.isNotEmpty) {
+        donorIds.add(donorId);
+      }
+    }
+    // Prefetch donor data
+    final donorsSnapshot = await FirebaseFirestore.instance
+        .collection('donors')
+        .where(FieldPath.documentId, whereIn: donorIds.toList())
+        .get();
+    final donorCache = <String, Map<String, dynamic>>{};
+    for (var doc in donorsSnapshot.docs) {
+      if (doc.exists && doc.data().isNotEmpty) {
+        donorCache[doc.id] = doc.data();
+      }
+    }
+    List<Person> newDonations = [];
+    for (var doc in snapshot.docs) {
+      final data = doc.data() as Map<String, dynamic>?;
+      if (data == null) continue;
+      final donorId = doc.reference.parent.parent?.id;
+      if (donorId != null &&
+          donorId.isNotEmpty &&
+          donorCache.containsKey(donorId)) {
+        final donorData = donorCache[donorId]!;
+        final donorName = donorData['name'] ?? 'Unknown Donor';
+        final donorImageUrl = donorData['imageUrl'] ?? '';
+        newDonations.add(Person(
+          name: donorName,
+          house: donorData['address']?.toString() ?? 'Unknown',
+          photoUrl: donorImageUrl,
+          amount: _parseAmount(data['amount']).toDouble(),
+          date: _formatTimestamp(data['timestamp']),
+          month: data['month']?.toString() ?? 'Unknown',
+          year: data['year']?.toString() ?? 'Unknown',
+          method: data['paymentMethod']?.toString() ?? 'Unknown',
+          status: data['status']?.toString() ?? 'Unpaid',
+          donorId: donorId,
+          documentPath: doc.reference.path,
+          imageUrl: donorImageUrl,
+          timestamp: (data['timestamp'] is Timestamp)
+              ? (data['timestamp'] as Timestamp).toDate()
+              : null,
+        ));
+      }
+    }
+    setState(() {
+      _paginatedDonations.addAll(newDonations);
+      _lastDocument = snapshot.docs.last;
+      _isPaginating = false;
+      _initialLoading = false;
+      if (newDonations.length < _pageSize) {
+        _hasMore = false;
+      }
+    });
   }
 
   @override
@@ -82,7 +246,8 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
           flexibleSpace: Align(
             alignment: Alignment.bottomCenter,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -93,31 +258,31 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
                       height: 50,
                     ),
                   ),
-                  Container(
-                    height: 26,
-                    width: 84,
-                    child: ElevatedButton(
-                      onPressed: () => showLogoutConfirmation(context),
-                      style: ElevatedButton.styleFrom(
-                        foregroundColor: Colors.black,
-                        backgroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: const Center(
-                        child: Text(
-                          'Logout',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            fontFamily: "Inter",
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  // Container(
+                  //   height: 26,
+                  //   width: 84,
+                  //   child: ElevatedButton(
+                  //     onPressed: () => showLogoutConfirmation(context),
+                  //     style: ElevatedButton.styleFrom(
+                  //       foregroundColor: Colors.black,
+                  //       backgroundColor: Colors.white,
+                  //       shape: RoundedRectangleBorder(
+                  //         borderRadius: BorderRadius.circular(2),
+                  //       ),
+                  //       elevation: 0,
+                  //     ),
+                  //     child: const Center(
+                  //       child: Text(
+                  //         'Logout',
+                  //         style: TextStyle(
+                  //           fontSize: 10,
+                  //           fontWeight: FontWeight.w600,
+                  //           fontFamily: "Inter",
+                  //         ),
+                  //       ),
+                  //     ),
+                  //   ),
+                  // ),
                 ],
               ),
             ),
@@ -149,10 +314,36 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
                     color: Color(0xff1BA3A1),
                   ),
                 ),
-                SvgPicture.asset(
-                  'lib/assets/images/settingsnew.svg',
-                  height: 40,
-                  width: 40,
+                PopupMenuButton<String>(
+                  tooltip: 'More',
+                  onSelected: (value) {
+                    if (value == 'history') {
+                      Navigator.push(
+                        context,
+                        SlidingPageTransitionRL(page: DeletionHistoryPage()),
+                      );
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem<String>(
+                      value: 'history',
+                      child: Row(
+                        children: const [
+                          Icon(Icons.history, size: 18, color: Color(0xff1BA3A1)),
+                          SizedBox(width: 8),
+                          Text(
+                            'Deletion History',
+                            style: TextStyle(fontFamily: 'Inter'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  child: SvgPicture.asset(
+                    'lib/assets/images/settingsnew.svg',
+                    height: 40,
+                    width: 40,
+                  ),
                 ),
               ],
             ),
@@ -177,9 +368,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
           controller: _searchController,
           keyboardType: TextInputType.multiline,
           onChanged: (value) {
-            setState(() {
-              _searchFilter = value.toLowerCase();
-            });
+            _handleSearchChange(value);
           },
           textAlignVertical: TextAlignVertical.center,
           style: const TextStyle(
@@ -198,20 +387,22 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
             ),
             suffixIcon: _searchFilter.isNotEmpty
                 ? IconButton(
-              icon: const Icon(Icons.clear, color: Color(0xff1BA3A1), size: 16),
-              onPressed: () {
-                _searchController.clear();
-              },
-            )
+                    icon: const Icon(Icons.clear,
+                        color: Color(0xff1BA3A1), size: 16),
+                    onPressed: () {
+                      _searchController.clear();
+                    },
+                  )
                 : Padding(
-              padding: const EdgeInsets.all(10.0),
-              child: SvgPicture.asset(
-                'lib/assets/images/search.svg',
-                height: 16,
-                width: 16,
-              ),
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                    padding: const EdgeInsets.all(10.0),
+                    child: SvgPicture.asset(
+                      'lib/assets/images/search.svg',
+                      height: 16,
+                      width: 16,
+                    ),
+                  ),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(4.0),
               borderSide: const BorderSide(
@@ -240,80 +431,287 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
   }
 
   Widget _buildDonationsList() {
-    return Consumer<DonationsProvider>(
-      builder: (context, provider, child) {
-        if (provider.errorMessage != null) {
-          return _buildErrorUI(provider.errorMessage!);
+    if (_initialLoading && !_isSearching) {
+      return _DonationsShimmerList();
+    }
+
+    // Decide data source based on search state
+    final List<Person> items;
+    final bool showLoader;
+    final bool showEndIndicator;
+    if (_isSearching) {
+      items = _searchResults;
+      // Show loader only while actively fetching
+      showLoader = _searchPaginating;
+      showEndIndicator =
+          items.isNotEmpty && !_searchHasMore && !_searchPaginating;
+    } else {
+      // Apply local filter when not searching (should be empty anyway)
+      items = _paginatedDonations;
+      showLoader = _isPaginating;
+      showEndIndicator = items.isNotEmpty && !_hasMore && !_isPaginating;
+    }
+
+    // Empty state handling
+    if (_isSearching && items.isEmpty) {
+      // While search is still loading/priming, show shimmer; else show polished empty state
+      if (_searchPaginating || _searchPriming) {
+        return _DonationsShimmerList();
+      }
+      return _buildNoSearchResultsUI(query: _searchFilter);
+    }
+    if (!_isSearching && items.isEmpty) {
+      // No donations at all
+      return _buildEmptyStateUI();
+    }
+
+    final extraCount = (showLoader || showEndIndicator) ? 1 : 0;
+    return ListView.builder(
+      controller: _scrollController,
+      itemCount: items.length + extraCount,
+      itemBuilder: (context, index) {
+        if (index == items.length) {
+          if (showLoader) return _BottomShimmerLoader();
+          if (showEndIndicator) return const _EndOfListIndicator();
         }
-        if (provider.isLoading) {
-          return _buildImprovedShimmerLoading();
-        }
-        if (provider.donations.isEmpty) {
-          return _buildEmptyStateUI();
-        }
-        // Show donation list
-        List<personHome> filteredDonations = provider.donations.where((person) {
-          if (_searchFilter.isEmpty) return true;
-          return person.name.toLowerCase().contains(_searchFilter) ||
-              person.month.toLowerCase().contains(_searchFilter) ||
-              person.amount.toString().contains(_searchFilter);
-        }).toList();
-        if (filteredDonations.isEmpty && _searchFilter.isNotEmpty) {
-          return _buildNoSearchResultsUI();
-        }
-        return ListView.builder(
-          itemCount: filteredDonations.length,
-          itemBuilder: (context, index) {
-            final person = filteredDonations[index];
-            return Dismissible(
-              key: Key(person.documentPath ?? '${person.donorId}_${person.date}_${person.amount}'),
-              direction: DismissDirection.endToStart,
-              background: Container(
-                alignment: Alignment.centerRight,
-                padding: const EdgeInsets.only(right: 20.0),
-                margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(12),
+        final person = items[index];
+        return Dismissible(
+          key: Key(person.documentPath ??
+              '${person.donorId}_${person.date}_${person.amount}'),
+          direction: DismissDirection.endToStart,
+          background: Container(
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.only(right: 20.0),
+            margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
+            decoration: BoxDecoration(
+              color: Colors.red,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.delete,
+                  color: Colors.white,
+                  size: 24,
                 ),
-                child: const Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.delete,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Delete',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontFamily: "Inter",
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+                SizedBox(height: 4),
+                Text(
+                  'Delete',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontFamily: "Inter",
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
-              confirmDismiss: (direction) async {
-                return await _showDeleteConfirmation(context, person);
-              },
-              onDismissed: (direction) async {
-                await _handleDonationDeletion(person);
-              },
-              child: PeopleListViewHome(
-                peoplesHome: [person],
-                onTap: (tappedPerson) {
-                  _showPaymentDetailsDialog(context, tappedPerson);
-                },
-              ),
-            );
+              ],
+            ),
+          ),
+          confirmDismiss: (direction) async {
+            return await _showDeleteConfirmation(context, person);
           },
+          onDismissed: (direction) async {
+            // Optimistically remove from the currently displayed list to satisfy Dismissible contract
+            final removed = person;
+            final isSearchingNow = _isSearching;
+            // Identify which list is currently displayed and capture index for potential rollback
+            int removedIndex;
+            if (isSearchingNow) {
+              removedIndex = _searchResults
+                  .indexWhere((p) => p.documentPath == removed.documentPath);
+              if (removedIndex != -1) {
+                setState(() {
+                  _searchResults.removeAt(removedIndex);
+                });
+              }
+            } else {
+              removedIndex = _paginatedDonations
+                  .indexWhere((p) => p.documentPath == removed.documentPath);
+              if (removedIndex != -1) {
+                setState(() {
+                  _paginatedDonations.removeAt(removedIndex);
+                });
+              }
+            }
+
+            final success = await _handleDonationDeletion(removed);
+            if (!success && removedIndex != -1) {
+              // Rollback on failure
+              if (!mounted) return;
+              setState(() {
+                if (isSearchingNow) {
+                  _searchResults.insert(removedIndex, removed);
+                } else {
+                  _paginatedDonations.insert(removedIndex, removed);
+                }
+              });
+            }
+          },
+          child: _DonationListTile(
+            person: person,
+            onTap: () => _showPaymentDetailsDialog(context, person),
+          ),
         );
       },
     );
+  }
+
+  // Start a new server-assisted search
+  Future<void> _startServerSearch() async {
+    setState(() {
+      _isSearching = true;
+      _searchResults.clear();
+      _searchHasMore = true;
+      _lastSearchDocument = null;
+      _searchPaginating = false;
+      _stagedSearchResults.clear();
+      _searchPriming = true;
+    });
+    await _fetchMoreSearchResults(initial: true);
+    // Auto-fill more pages if needed
+    await _ensureSearchFilled();
+  }
+
+  // Fetch a page for search mode
+  Future<void> _fetchMoreSearchResults({bool initial = false}) async {
+    if (!_searchHasMore || _searchPaginating) return;
+    setState(() {
+      _searchPaginating = true;
+    });
+
+    try {
+      Query query = FirebaseFirestore.instance
+          .collectionGroup('paymentStatus')
+          .where('status', isEqualTo: 'paid')
+          .orderBy('timestamp', descending: true)
+          .limit(_pageSize);
+
+      if (_lastSearchDocument != null) {
+        query = query.startAfterDocument(_lastSearchDocument!);
+      }
+
+      final snapshot = await query.get();
+      if (snapshot.docs.isEmpty) {
+        setState(() {
+          _searchHasMore = false;
+          _searchPaginating = false;
+        });
+        return;
+      }
+
+      // Prefetch donor docs for this page
+      final Set<String> donorIds = {
+        for (final d in snapshot.docs)
+          if (d.reference.parent.parent?.id != null)
+            d.reference.parent.parent!.id
+      };
+
+      // Fetch donors in batches of 10 to respect whereIn limit
+      final donorIdList = donorIds.toList();
+      final Map<String, Map<String, dynamic>> donorCache = {};
+      for (var i = 0; i < donorIdList.length; i += 10) {
+        final chunk =
+            donorIdList.sublist(i, (i + 10).clamp(0, donorIdList.length));
+        if (chunk.isEmpty) continue;
+        final donorsSnapshot = await FirebaseFirestore.instance
+            .collection('donors')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+        for (final d in donorsSnapshot.docs) {
+          donorCache[d.id] = d.data();
+        }
+      }
+
+      final List<Person> pagePeople = [];
+      for (final doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>?;
+        if (data == null) continue;
+        final donorId = doc.reference.parent.parent?.id;
+        if (donorId == null || donorId.isEmpty) continue;
+        final donorData = donorCache[donorId] ?? {};
+
+        final donorName = (donorData['name'] ?? 'Unknown Donor').toString();
+        final donorImageUrl = (donorData['imageUrl'] ?? '').toString();
+        final donorAddress = (donorData['address'] ?? 'Unknown').toString();
+
+        final person = Person(
+          name: donorName,
+          house: donorAddress,
+          photoUrl: donorImageUrl,
+          amount: _parseAmount(data['amount']).toDouble(),
+          date: _formatTimestamp(data['timestamp']),
+          month: data['month']?.toString() ?? 'Unknown',
+          year: data['year']?.toString() ?? 'Unknown',
+          method: data['paymentMethod']?.toString() ?? 'Unknown',
+          status: data['status']?.toString() ?? 'Unpaid',
+          donorId: donorId,
+          documentPath: doc.reference.path,
+          imageUrl: donorImageUrl,
+          timestamp: (data['timestamp'] is Timestamp)
+              ? (data['timestamp'] as Timestamp).toDate()
+              : null,
+        );
+
+        if (_matchesSearch(person, _searchFilter)) {
+          pagePeople.add(person);
+        }
+      }
+
+      setState(() {
+        // Stage results first
+        _stagedSearchResults.addAll(pagePeople);
+        _lastSearchDocument = snapshot.docs.last;
+        _searchPaginating = false;
+        if (snapshot.docs.length < _pageSize) {
+          _searchHasMore = false;
+        }
+
+        // Commit to UI when threshold reached or no more pages
+        final shouldCommit = !_searchHasMore ||
+            _stagedSearchResults.length >= _searchBatchThreshold;
+        if (shouldCommit) {
+          _searchResults.addAll(_stagedSearchResults);
+          _stagedSearchResults.clear();
+          _searchPriming = false;
+        }
+      });
+      // If still searching and not enough items to fill, continue auto-fetch
+      await _ensureSearchFilled();
+    } catch (e) {
+      setState(() {
+        _searchPaginating = false;
+        _searchHasMore = false;
+      });
+      // Optionally log error
+      debugPrint('Search fetch error: $e');
+    }
+  }
+
+  // Load all remaining pages for the current search query
+  Future<void> _ensureSearchFilled() async {
+    while (mounted && _isSearching && _searchHasMore) {
+      await _fetchMoreSearchResults();
+    }
+  }
+
+  bool _matchesSearch(Person person, String q) {
+    if (q.isEmpty) return true;
+    final nameMatch = person.name.toLowerCase().contains(q);
+    final houseMatch = person.house.toLowerCase().contains(q);
+    final donorIdMatch = (person.donorId ?? '').toLowerCase().contains(q);
+    final monthMatch = person.month?.toLowerCase().contains(q) ?? false;
+    final yearMatch = person.year?.toLowerCase().contains(q) ?? false;
+    final methodMatch = person.method?.toLowerCase().contains(q) ?? false;
+    final amountMatch = person.amount.toString().contains(q) ||
+        person.amount.toStringAsFixed(0).contains(q);
+    return nameMatch ||
+        houseMatch ||
+        donorIdMatch ||
+        monthMatch ||
+        yearMatch ||
+        methodMatch ||
+        amountMatch;
   }
 
   String _getErrorMessage(dynamic error) {
@@ -331,106 +729,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
   }
 
   Widget _buildImprovedShimmerLoading() {
-    return Shimmer.fromColors(
-      baseColor: Colors.grey[300]!,
-      highlightColor: Colors.grey[100]!,
-      child: ListView.builder(
-        itemCount: 8,
-        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-        itemBuilder: (context, index) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6.0),
-            child: Container(
-              height: 85,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Colors.grey[200]!,
-                  width: 1,
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: Row(
-                  children: [
-                    // Avatar placeholder
-                    Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.grey[300]!,
-                          width: 2,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    // Content placeholder
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          // Name placeholder
-                          Container(
-                            height: 16,
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          // Details placeholder
-                          Row(
-                            children: [
-                              Container(
-                                height: 12,
-                                width: 80,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Container(
-                                height: 12,
-                                width: 60,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    // Amount placeholder
-                    Container(
-                      width: 80,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Colors.grey[300]!,
-                          width: 1,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
+    return AllDonationsShimmer();
   }
 
   Widget _buildEmptyStateUI() {
@@ -500,6 +799,68 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildNoSearchResultsUI({String? query}) {
+    final q = (query ?? '').trim();
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 110,
+              height: 110,
+              decoration: BoxDecoration(
+                color: const Color(0xff1BA3A1).withOpacity(0.08),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.search_off_rounded,
+                size: 56,
+                color: Colors.grey[500],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'No results found',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[800],
+                fontFamily: 'Inter',
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (q.isNotEmpty)
+              RichText(
+                textAlign: TextAlign.center,
+                text: TextSpan(
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[700],
+                    fontFamily: 'Inter',
+                  ),
+                  children: [
+                    const TextSpan(text: 'We couldn\'t find any donations matching '),
+                    TextSpan(
+                      text: '“$q”',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xff1BA3A1),
+                      ),
+                    ),
+                    const TextSpan(text: '.'),
+                  ],
+                ),
+              ),
+
+          ],
+        ),
       ),
     );
   }
@@ -592,7 +953,8 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 12),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -608,7 +970,8 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
                   ),
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.grey[600],
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 12),
                   ),
                 ),
               ],
@@ -619,117 +982,68 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
     );
   }
 
-  Widget _buildNoSearchResultsUI() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: Colors.grey[200],
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.search_off,
-              size: 40,
-              color: Colors.grey,
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'No Results Found',
-            style: TextStyle(
-              fontFamily: "Inter",
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'No donations match "$_searchFilter"',
-            style: const TextStyle(
-              fontFamily: "Inter",
-              fontSize: 14,
-              color: Colors.grey,
-            ),
-          ),
-          const SizedBox(height: 16),
-          TextButton.icon(
-            onPressed: () {
-              _searchController.clear();
-            },
-            icon: const Icon(Icons.clear, size: 18),
-            label: const Text(
-              'Clear Search',
-              style: TextStyle(
-                fontFamily: "Inter",
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xff1BA3A1),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _handleDonationDeletion(personHome person) async {
+  Future<bool> _handleDonationDeletion(Person person) async {
     try {
-      if (person.documentPath != null) {
-        await FirebaseFirestore.instance
-            .doc(person.documentPath!)
-            .delete();
+      if (person.documentPath == null) return false;
 
-        setState(() {
-          _processedDonations.removeWhere(
-                  (p) => p.documentPath == person.documentPath);
-        });
+      // Store the deleted item in history collection before deleting
+      await FirebaseFirestore.instance.collection('deleted_donations').add({
+        'name': person.name,
+        'house': person.house,
+        'photoUrl': person.photoUrl,
+        'imageUrl': person.imageUrl,
+        'amount': person.amount,
+        'date': person.date,
+        'month': person.month,
+        'year': person.year,
+        'method': person.method,
+        'status': person.status,
+        'donorId': person.donorId,
+        'originalDocumentPath': person.documentPath,
+        'deletedAt': FieldValue.serverTimestamp(),
+        'timestamp': person.timestamp,
+      });
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.white, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Donation deleted successfully',
-                    style: const TextStyle(fontFamily: "Inter"),
-                  ),
-                ],
-              ),
-              backgroundColor: const Color(0xff1BA3A1),
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      print('Error deleting donation: $e');
+      // Delete from Firestore
+      await FirebaseFirestore.instance.doc(person.documentPath!).delete();
+      // Also delete from local cache so UI updates immediately
+      await LocalDatabaseService()
+          .deleteDonationByDocumentPath(person.documentPath!);
 
       if (mounted) {
-        setState(() {
-          _errorMessage = 'Failed to delete donation: ${e.toString()}';
-        });
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
               children: [
-                const Icon(Icons.error, color: Colors.white, size: 20),
+                const Icon(Icons.check_circle, color: Colors.white, size: 20),
                 const SizedBox(width: 8),
+                const Text(
+                  'Donation deleted successfully',
+                  style: TextStyle(fontFamily: "Inter"),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        );
+      }
+      return true;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.error, color: Colors.white, size: 20),
+                SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Failed to delete donation. Please try again.',
-                    style: const TextStyle(fontFamily: "Inter"),
+                    style: TextStyle(fontFamily: "Inter"),
                   ),
                 ),
               ],
@@ -739,14 +1053,10 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),
-            action: SnackBarAction(
-              label: 'Retry',
-              textColor: Colors.white,
-              onPressed: () => _handleDonationDeletion(person),
-            ),
           ),
         );
       }
+      return false;
     }
   }
 
@@ -763,14 +1073,28 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
         return "Invalid Date";
       }
 
-      return "${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}";
+      // Return date with exact time in 12h format with AM/PM: dd MMM yyyy, hh:mm AM/PM
+      const monthNames = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      ];
+      final day = date.day.toString().padLeft(2, '0');
+      final monthName = monthNames[(date.month - 1).clamp(0, 11)];
+      final year = date.year.toString();
+      int h24 = date.hour;
+      final ampm = h24 >= 12 ? 'PM' : 'AM';
+      int h12 = h24 % 12;
+      if (h12 == 0) h12 = 12; // 0 or 12 -> 12
+      final hour = h12.toString().padLeft(2, '0');
+      final minute = date.minute.toString().padLeft(2, '0');
+      return "$day $monthName $year, $hour:$minute $ampm";
     } catch (e) {
       print('Error formatting timestamp: $e');
       return "Unknown Date";
     }
   }
 
-  void _showPaymentDetailsDialog(BuildContext context, personHome person) async {
+  void _showPaymentDetailsDialog(BuildContext context, Person person) async {
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
@@ -805,8 +1129,30 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.account_circle,
-                          color: Color(0xff1BA3A1), size: 28),
+                      CircleAvatar(
+                        radius: 28,
+                        backgroundImage: (person.imageUrl != null &&
+                                person.imageUrl!.isNotEmpty)
+                            ? NetworkImage(person.imageUrl!)
+                            : null,
+                        backgroundColor: (person.imageUrl != null &&
+                                person.imageUrl!.isNotEmpty)
+                            ? null
+                            : const Color(0xff1BA3A1),
+                        child: (person.imageUrl == null ||
+                                person.imageUrl!.isEmpty)
+                            ? Text(
+                                person.name.isNotEmpty
+                                    ? person.name[0].toUpperCase()
+                                    : '',
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : null,
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -842,7 +1188,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
-                          person.status,
+                          person.status!,
                           style: const TextStyle(
                             color: Colors.white,
                             fontFamily: "Inter",
@@ -855,10 +1201,12 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                _detailItem(Icons.calendar_today, "Date", person.date),
-                _detailItem(Icons.payment, "Payment Method", person.method),
-                _detailItem(Icons.date_range, "Month", person.month),
-                _detailItem(Icons.calendar_view_month, "Year", person.year),
+                _detailItem(Icons.calendar_today, "Date", person.date ?? 'N/A'),
+                _detailItem(
+                    Icons.payment, "Payment Method", person.method ?? 'N/A'),
+                _detailItem(Icons.date_range, "Month", person.month ?? 'N/A'),
+                _detailItem(
+                    Icons.calendar_view_month, "Year", person.year ?? 'N/A'),
                 const SizedBox(height: 16),
                 Row(
                   children: [
@@ -866,7 +1214,8 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
                       child: ElevatedButton(
                         onPressed: () async {
                           try {
-                            final imagePath = await _generateAndSaveImage(person);
+                            final imagePath =
+                                await _generateAndSaveImage(person);
                             await Share.shareXFiles([XFile(imagePath)],
                                 text: 'Donation Receipt for ${person.name}');
                           } catch (e) {
@@ -934,7 +1283,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
     );
   }
 
-  Widget _detailItem(IconData icon, String label, String value) {
+  Widget _detailItem(IconData icon, String label, String? value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -954,7 +1303,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
                   ),
                 ),
                 Text(
-                  value,
+                  value!,
                   style: const TextStyle(
                     fontFamily: "Inter",
                     fontSize: 14,
@@ -969,10 +1318,10 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
     );
   }
 
-  Future<String> _generateAndSaveImage(personHome person) async {
+  Future<String> _generateAndSaveImage(Person person) async {
     // Create a GlobalKey to capture the widget
     final GlobalKey receiptKey = GlobalKey();
-    
+
     // Fetch donor address from Firestore
     String donorAddress = '';
     try {
@@ -980,7 +1329,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
           .collection('donors')
           .doc(person.donorId)
           .get();
-      
+
       if (donorDoc.exists) {
         final donorData = donorDoc.data() as Map<String, dynamic>;
         donorAddress = donorData['address'] ?? '';
@@ -988,11 +1337,11 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
     } catch (e) {
       print('Error fetching donor address: $e');
     }
-    
+
     // Show the receipt in an overlay to render it
     final overlay = Overlay.of(context);
     late OverlayEntry overlayEntry;
-    
+
     overlayEntry = OverlayEntry(
       builder: (context) => Positioned(
         left: -10000, // Position off-screen
@@ -1003,24 +1352,26 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
         ),
       ),
     );
-    
+
     overlay.insert(overlayEntry);
-    
+
     // Wait for the widget to render
     await Future.delayed(const Duration(milliseconds: 100));
-    
+
     try {
       // Capture the widget as an image
-      final boundary = receiptKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+      final boundary = receiptKey.currentContext!.findRenderObject()
+          as RenderRepaintBoundary;
       final image = await boundary.toImage(pixelRatio: 3.0);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       final bytes = byteData!.buffer.asUint8List();
-      
+
       // Save image to temporary directory
       final tempDir = await getTemporaryDirectory();
-      final imageFile = File('${tempDir.path}/PMJ_Receipt_${person.donorId}_${DateTime.now().millisecondsSinceEpoch}.png');
+      final imageFile = File(
+          '${tempDir.path}/PMJ_Receipt_${person.donorId}_${DateTime.now().millisecondsSinceEpoch}.png');
       await imageFile.writeAsBytes(bytes);
-      
+
       return imageFile.path;
     } finally {
       // Remove the overlay entry
@@ -1028,7 +1379,8 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
     }
   }
 
-  Widget _buildReceiptWidget(personHome person, GlobalKey key, String donorAddress) {
+  Widget _buildReceiptWidget(
+      Person person, GlobalKey key, String donorAddress) {
     return RepaintBoundary(
       key: key,
       child: Center(
@@ -1118,7 +1470,8 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
 
               // Divider Line
               Container(
-                margin: const EdgeInsets.symmetric(horizontal: 32, vertical: 10),
+                margin:
+                    const EdgeInsets.symmetric(horizontal: 32, vertical: 10),
                 height: 1,
                 color: Colors.grey[300],
               ),
@@ -1132,9 +1485,15 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
                     const SizedBox(height: 8),
                     _buildReceiptRow('Name:', person.name),
                     const SizedBox(height: 8),
-                    _buildReceiptRow('Month:', '${person.month} ${person.year}'),
+                    _buildReceiptRow(
+                        'Month:',
+                        person.month != null && person.year != null
+                            ? '${person.month} ${person.year}'
+                            : null),
                     const SizedBox(height: 8),
-                    _buildReceiptRow('Amount', '₹${person.amount.toStringAsFixed(0)}/-', isAmount: true),
+                    _buildReceiptRow(
+                        'Amount', '₹${person.amount.toStringAsFixed(0)}/-',
+                        isAmount: true),
                     const SizedBox(height: 8),
                     _buildReceiptRow('Payment Method:', person.method),
                     const SizedBox(height: 18),
@@ -1146,7 +1505,8 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
               Container(
                 width: double.infinity,
                 margin: const EdgeInsets.symmetric(horizontal: 28),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: const Color(0xFFeafbe7),
                   borderRadius: BorderRadius.zero, // No curve
@@ -1208,7 +1568,9 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
     );
   }
 
-  Widget _buildReceiptRow(String label, String value, {bool isAmount = false}) {
+  Widget _buildReceiptRow(String label, String? value,
+      {bool isAmount = false}) {
+    final displayValue = value ?? 'N/A';
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -1222,7 +1584,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
         ),
         Flexible(
           child: Text(
-            value,
+            displayValue,
             style: TextStyle(
               fontSize: 13,
               fontWeight: isAmount ? FontWeight.bold : FontWeight.w500,
@@ -1230,6 +1592,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
             ),
             textAlign: TextAlign.right,
             overflow: TextOverflow.ellipsis,
+            maxLines: 2,
           ),
         ),
       ],
@@ -1237,120 +1600,375 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
   }
 
   Future<bool> _showDeleteConfirmation(
-      BuildContext context, personHome person) async {
+      BuildContext context, Person person) async {
     return await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          title: Row(
-            children: [
-              Icon(
-                Icons.warning_amber_rounded,
-                color: Colors.orange[600],
-                size: 24,
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext dialogContext) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
-              const SizedBox(width: 8),
-              const Text(
-                'Confirm Deletion',
-                style: TextStyle(
+              title: Row(
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.orange[600],
+                    size: 24,
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Confirm Deletion',
+                    style: TextStyle(
+                      fontFamily: "Inter",
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+              content: Text(
+                'Are you sure you want to delete this donation of ₹${person.amount} from ${person.name}?\n\nThis action cannot be undone.',
+                style: const TextStyle(
                   fontFamily: "Inter",
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
-              ),
-            ],
-          ),
-          content: Text(
-            'Are you sure you want to delete this donation of ₹${person.amount} from ${person.name}?\n\nThis action cannot be undone.',
-            style: const TextStyle(
-              fontFamily: "Inter",
-              fontWeight: FontWeight.w400,
-              fontSize: 14,
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.grey[600],
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(6),
-                ),
-              ),
-              child: const Text(
-                'Cancel',
-                style: TextStyle(
-                  fontFamily: "Inter",
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w400,
                   fontSize: 14,
                 ),
               ),
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                foregroundColor: Colors.white,
-                backgroundColor: Colors.red[600],
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(6),
+              actions: <Widget>[
+                TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.grey[600],
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(
+                      fontFamily: "Inter",
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(false);
+                  },
                 ),
-                elevation: 0,
-              ),
-              child: const Text(
-                'Delete',
-                style: TextStyle(
-                  fontFamily: "Inter",
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    backgroundColor: Colors.red[600],
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'Delete',
+                    style: TextStyle(
+                      fontFamily: "Inter",
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(true);
+                  },
                 ),
-              ),
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
-            ),
-          ],
-        );
-      },
-    ) ??
+              ],
+            );
+          },
+        ) ??
         false;
   }
 
-  String _numberToWords(int number) {
-    if (number == 0) return 'Zero Rupees Only';
-    final units = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
-    final teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-    final tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  String _numberToWords(dynamic number) {
+    if (number == null) return 'Zero Rupees Only';
+
+    // Handle both int and double
+    final isDouble = number is double;
+    int wholeNumber = isDouble ? number.floor() : number as int;
+    int paise = 0;
+
+    if (isDouble) {
+      // Extract paise (2 decimal places)
+      paise = ((number - wholeNumber) * 100).round();
+    }
+
+    final units = [
+      '',
+      'One',
+      'Two',
+      'Three',
+      'Four',
+      'Five',
+      'Six',
+      'Seven',
+      'Eight',
+      'Nine'
+    ];
+    final teens = [
+      'Ten',
+      'Eleven',
+      'Twelve',
+      'Thirteen',
+      'Fourteen',
+      'Fifteen',
+      'Sixteen',
+      'Seventeen',
+      'Eighteen',
+      'Nineteen'
+    ];
+    final tens = [
+      '',
+      '',
+      'Twenty',
+      'Thirty',
+      'Forty',
+      'Fifty',
+      'Sixty',
+      'Seventy',
+      'Eighty',
+      'Ninety'
+    ];
+
     String convertLessThanOneThousand(int n) {
       if (n == 0) return '';
       if (n < 10) return units[n];
       if (n < 20) return teens[n - 10];
       if (n < 100) {
-        return tens[n ~/ 10] + (n % 10 != 0 ? ' ' + units[n % 10] : '');
+        return '${tens[n ~/ 10]}${n % 10 != 0 ? ' ${units[n % 10]}' : ''}';
       }
-      return units[n ~/ 100] + ' Hundred' + (n % 100 != 0 ? ' and ' + convertLessThanOneThousand(n % 100) : '');
+      return '${units[n ~/ 100]} Hundred${n % 100 != 0 ? ' and ${convertLessThanOneThousand(n % 100)}' : ''}';
     }
+
     String result = '';
-    int num = number;
-    if (num >= 10000000) {
-      result += convertLessThanOneThousand(num ~/ 10000000) + ' Crore ';
-      num %= 10000000;
+    int num = wholeNumber;
+
+    if (num == 0) {
+      result = 'Zero';
+    } else {
+      if (num >= 10000000) {
+        result += '${convertLessThanOneThousand(num ~/ 10000000)} Crore ';
+        num %= 10000000;
+      }
+      if (num >= 100000) {
+        result += '${convertLessThanOneThousand(num ~/ 100000)} Lakh ';
+        num %= 100000;
+      }
+      if (num >= 1000) {
+        result += '${convertLessThanOneThousand(num ~/ 1000)} Thousand ';
+        num %= 1000;
+      }
+      if (num > 0) {
+        result += convertLessThanOneThousand(num);
+      }
     }
-    if (num >= 100000) {
-      result += convertLessThanOneThousand(num ~/ 100000) + ' Lakh ';
-      num %= 100000;
+
+    // Add paise if exists
+    String paiseText = '';
+    if (paise > 0) {
+      paiseText =
+          ' and ${paise < 10 ? 'Zero ' : ''}${convertLessThanOneThousand(paise)} Paise';
     }
-    if (num >= 1000) {
-      result += convertLessThanOneThousand(num ~/ 1000) + ' Thousand ';
-      num %= 1000;
+
+    return '${result.trim()} Rupees$paiseText Only';
+  }
+
+  int _parseAmount(dynamic amount) {
+    if (amount == null) return 0;
+    if (amount is int) return amount;
+    if (amount is double) return amount.toInt();
+    if (amount is String) {
+      try {
+        return int.parse(amount);
+      } catch (e) {
+        try {
+          return double.parse(amount).toInt();
+        } catch (e) {
+          return 0;
+        }
+      }
     }
-    if (num > 0) {
-      result += convertLessThanOneThousand(num);
+    return 0;
+  }
+}
+
+class _EndOfListIndicator extends StatelessWidget {
+  const _EndOfListIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16.0),
+      child: Center(
+        child: Text(
+          'All results loaded',
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[600],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Shimmer for initial loading
+class _DonationsShimmerList extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return AllDonationsShimmer();
+  }
+}
+
+// Shimmer for bottom loading
+class _BottomShimmerLoader extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return BottomShimmerLoader();
+  }
+}
+
+// Shimmer for bottom loading
+class _AvatarWithCache extends StatelessWidget {
+  final Person person;
+
+  const _AvatarWithCache({required this.person});
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveUrl =
+        (person.photoUrl != null && person.photoUrl!.isNotEmpty)
+            ? person.photoUrl!
+            : (person.imageUrl ?? '');
+
+    if (effectiveUrl.isEmpty) {
+      return CircleAvatar(
+        radius: 20,
+        backgroundColor: const Color(0xff1BA3A1),
+        child: Text(
+          person.name.isNotEmpty ? person.name[0].toUpperCase() : '',
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+      );
     }
-    return result.trim() + ' Rupees Only';
+
+    return FutureBuilder<ImageProvider?>(
+      future: ImageCacheService().getImageProvider(effectiveUrl),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Shimmer.fromColors(
+            baseColor: Colors.grey[300]!,
+            highlightColor: Colors.grey[100]!,
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.grey[300]!, width: 2),
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.hasData && snapshot.data != null) {
+          return ClipOval(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: Image(
+                key: ValueKey(effectiveUrl),
+                image: snapshot.data!,
+                width: 40,
+                height: 40,
+                fit: BoxFit.cover,
+              ),
+            ),
+          );
+        }
+
+        // Fallback to initials
+        return CircleAvatar(
+          radius: 20,
+          backgroundColor: const Color(0xff1BA3A1),
+          child: Text(
+            person.name.isNotEmpty ? person.name[0].toUpperCase() : '',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _DonationListTile extends StatelessWidget {
+  final Person person;
+  final VoidCallback? onTap;
+
+  const _DonationListTile({required this.person, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      onTap: onTap,
+      leading: _AvatarWithCache(person: person),
+      title: Text(
+        person.name,
+        style: const TextStyle(
+          fontSize: 14,
+          fontFamily: "Inter",
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      subtitle: Text(
+        "${person.date} • ${person.month} ${person.year}",
+        style: const TextStyle(
+          fontSize: 10,
+          fontFamily: "Inter",
+          fontWeight: FontWeight.w400,
+          color: Color(0xff817D8A),
+        ),
+      ),
+      trailing: Padding(
+        padding: const EdgeInsets.only(bottom: 1.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              "₹${person.amount.toStringAsFixed(0)}",
+              style: const TextStyle(
+                fontSize: 16,
+                fontFamily: "Inter",
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (person.method != null && person.method!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Text(
+                  person.method!,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontFamily: "Inter",
+                    fontWeight: FontWeight.w400,
+                    color: Color(0xff817D8A),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }

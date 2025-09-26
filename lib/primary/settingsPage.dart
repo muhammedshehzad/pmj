@@ -1,15 +1,22 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+import 'package:flutter_svg/svg.dart';
+import 'package:pmj_application/assets/custom%20widgets/logoutpopup.dart';
+import 'package:pmj_application/models/donation_model.dart';
+import 'package:pmj_application/models/person_model.dart';
+import 'package:pmj_application/services/local_database_service.dart';
+import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:pdf/pdf.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import '../assets/custom widgets/logoutpopup.dart';
-import '../assets/custom widgets/transition.dart';
+import '../secondary/all_donations.dart';
+import '../services/local_database_service.dart';
+import '../assets/custom%20widgets/shimmer_widgets.dart';
 import '../assets/custom widgets/GPay.dart';
+import '../assets/custom widgets/transition.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -181,31 +188,31 @@ class NotificationsPage extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Container(
-                    height: 26,
-                    width: 84,
-                    child: ElevatedButton(
-                      onPressed: () => showLogoutConfirmation(context),
-                      style: ElevatedButton.styleFrom(
-                        foregroundColor: Colors.black,
-                        backgroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: const Center(
-                        child: Text(
-                          'Logout',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            fontFamily: "Inter",
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  // Container(
+                  //   height: 26,
+                  //   width: 84,
+                  //   child: ElevatedButton(
+                  //     onPressed: () => showLogoutConfirmation(context),
+                  //     style: ElevatedButton.styleFrom(
+                  //       foregroundColor: Colors.black,
+                  //       backgroundColor: Colors.white,
+                  //       shape: RoundedRectangleBorder(
+                  //         borderRadius: BorderRadius.circular(2),
+                  //       ),
+                  //       elevation: 0,
+                  //     ),
+                  //     child: const Center(
+                  //       child: Text(
+                  //         'Logout',
+                  //         style: TextStyle(
+                  //           fontSize: 10,
+                  //           fontWeight: FontWeight.w600,
+                  //           fontFamily: "Inter",
+                  //         ),
+                  //       ),
+                  //     ),
+                  //   ),
+                  // ),
                 ],
               ),
             ),

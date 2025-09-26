@@ -1,275 +1,123 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
-part 'PeopleListViewHome.g.dart';
+import 'package:pmj_application/models/donation_model.dart';
+import 'package:pmj_application/services/local_database_service.dart';
 
-@HiveType(typeId: 0)
-class personHome {
-  @HiveField(0)
-  final String name;
-  @HiveField(1)
-  final String date;
-  @HiveField(2)
-  final int amount;
-  @HiveField(3)
-  final String donorId;
-  @HiveField(4)
-  final String method;
-  @HiveField(5)
-  final String month;
-  @HiveField(6)
-  final String year;
-  @HiveField(7)
-  final String status;
-  @HiveField(8)
-  final String? documentPath;
+class PeopleListViewHome extends StatefulWidget {
+  final Function(Donation)? onTap;
+  final String searchQuery;
 
-  personHome({
-    required this.name,
-    required this.date,
-    required this.amount,
-    required this.donorId,
-    required this.method,
-    required this.month,
-    required this.year,
-    required this.status,
-    this.documentPath,
-  });
+  const PeopleListViewHome({
+    Key? key,
+    this.onTap,
+    this.searchQuery = '',
+  }) : super(key: key);
+
+  @override
+  _PeopleListViewHomeState createState() => _PeopleListViewHomeState();
 }
 
-class PeopleListViewHome extends StatelessWidget {
-  final List<personHome> peoplesHome;
-  final Function(personHome)? onTap;
+class _PeopleListViewHomeState extends State<PeopleListViewHome> {
+  final LocalDatabaseService _localDb = LocalDatabaseService();
 
-  const PeopleListViewHome({Key? key, required this.peoplesHome, this.onTap})
-      : super(key: key);
+  @override
+  void initState() {
+    super.initState();
+    // Initial sync with Firestore
+    _localDb.syncWithFirestore().catchError((error) {
+      // Handle error silently - we'll still show cached data
+      debugPrint('Error syncing with Firestore: $error');
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const BouncingScrollPhysics(),
-      itemCount: peoplesHome.length,
-      itemBuilder: (context, index) {
-        final person = peoplesHome[index];
+    return StreamBuilder<List<Donation>>(
+      stream: _localDb.watchDonations(query: widget.searchQuery),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-        // Check if donorId is valid
-        if (person.donorId.isEmpty) {
-          return ListTile(
-            onTap: onTap != null ? () => onTap!(person) : null,
-            leading: CircleAvatar(
-              radius: 20,
-              backgroundImage: null, // No network image for empty donorId
-              backgroundColor: Colors.teal,
-              child: Text(
-                person.name.isNotEmpty ? person.name[0].toUpperCase() : '',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-            title: Text(
-              person.name,
-              style: const TextStyle(
-                fontSize: 14,
-                fontFamily: "Inter",
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            subtitle: Text(
-              "${person.date} • ${person.month} ${person.year}",
-              style: const TextStyle(
-                fontSize: 10,
-                fontFamily: "Inter",
-                fontWeight: FontWeight.w400,
-                color: Color(0xff817D8A),
-              ),
-            ),
-            trailing: Padding(
-              padding: const EdgeInsets.only(bottom: 1.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    "₹${person.amount.toStringAsFixed(0)}",
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontFamily: "Inter",
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4.0),
-                    child: Text(
-                      person.method,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontFamily: "Inter",
-                        fontWeight: FontWeight.w400,
-                        color: Color(0xff817D8A),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+        if (snapshot.hasError) {
+          return Center(
+            child: Text('Error loading donations: ${snapshot.error}'),
           );
         }
 
-        return FutureBuilder<DocumentSnapshot>(
-          future: FirebaseFirestore.instance
-              .collection('donors')
-              .doc(person.donorId)
-              .get(),
-          builder: (context, donorSnapshot) {
-            if (donorSnapshot.connectionState == ConnectionState.waiting) {
-              return const SizedBox();
-            }
-            if (donorSnapshot.hasError ||
-                !donorSnapshot.hasData ||
-                !donorSnapshot.data!.exists) {
-              return ListTile(
-                onTap: onTap != null ? () => onTap!(person) : null,
-                leading: CircleAvatar(
-                  radius: 20,
-                  backgroundImage: null, // No valid donor data
-                  backgroundColor: Colors.teal,
-                  child: Text(
-                    person.name.isNotEmpty ? person.name[0].toUpperCase() : '',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                title: Text(
-                  person.name,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontFamily: "Inter",
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                subtitle: Text(
-                  "${person.date} • ${person.month} ${person.year}",
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontFamily: "Inter",
-                    fontWeight: FontWeight.w400,
-                    color: Color(0xff817D8A),
-                  ),
-                ),
-                trailing: Padding(
-                  padding: const EdgeInsets.only(bottom: 1.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        "₹${person.amount.toStringAsFixed(0)}",
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontFamily: "Inter",
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4.0),
-                        child: Text(
-                          person.method,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontFamily: "Inter",
-                            fontWeight: FontWeight.w400,
-                            color: Color(0xff817D8A),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }
+        final donations = snapshot.data ?? [];
 
-            final donorData =
-            donorSnapshot.data!.data() as Map<String, dynamic>;
-            final donorImage = donorData['imageUrl'] as String?;
+        if (donations.isEmpty) {
+          return const Center(
+            child: Text('No donations found'),
+          );
+        }
 
-            return ListTile(
-              onTap: onTap != null ? () => onTap!(person) : null,
-              leading: CircleAvatar(
-                radius: 20,
-                backgroundImage: donorImage != null && donorImage.isNotEmpty
-                    ? NetworkImage(donorImage)
-                    : null,
-                backgroundColor: donorImage != null && donorImage.isNotEmpty
-                    ? null
-                    : Color(0xff1BA3A1),
-                child: donorImage == null || donorImage.isEmpty
-                    ? Text(
-                  person.name.isNotEmpty ? person.name[0].toUpperCase() : '',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                )
-                    : null,
-              ),
-              title: Text(
-                person.name,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontFamily: "Inter",
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              subtitle: Text(
-                "${person.date} • ${person.month} ${person.year}",
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontFamily: "Inter",
-                  fontWeight: FontWeight.w400,
-                  color: Color(0xff817D8A),
-                ),
-              ),
-              trailing: Padding(
-                padding: const EdgeInsets.only(bottom: 1.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      "₹${person.amount.toStringAsFixed(0)}",
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontFamily: "Inter",
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4.0),
-                      child: Text(
-                        person.method,
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontFamily: "Inter",
-                          fontWeight: FontWeight.w400,
-                          color: Color(0xff817D8A),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
+        return ListView.builder(
+          shrinkWrap: true,
+          physics: const BouncingScrollPhysics(),
+          itemCount: donations.length,
+          itemBuilder: (context, index) {
+            final donation = donations[index];
+            return _buildDonationTile(donation);
           },
         );
       },
+    );
+  }
+
+  Widget _buildDonationTile(Donation donation) {
+    String formattedDate = donation.date.isNotEmpty ? '${donation.date} • ' : '';
+    String monthYear = '${donation.month} ${donation.year}';
+
+    return ListTile(
+      onTap: widget.onTap != null ? () => widget.onTap!(donation) : null,
+      leading:           CircleAvatar(
+        radius: 20,
+        backgroundColor: const Color(0xff1BA3A1),
+        child: Text(
+          donation.name.isNotEmpty ? donation.name[0].toUpperCase() : '',
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+      ),
+      title: Text(
+        donation.name,
+        style: const TextStyle(
+          fontSize: 14,
+          fontFamily: "Inter",
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      subtitle: Text(
+        '$formattedDate$monthYear',
+        style: const TextStyle(
+          fontSize: 10,
+          fontFamily: "Inter",
+          fontWeight: FontWeight.w400,
+          color: Color(0xff817D8A),
+        ),
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                "₹${donation.amount.toString()}",
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

@@ -16,9 +16,7 @@ class _HomeState extends State<splashscreen> {
   @override
   void initState() {
     super.initState();
-    _navigateToMainPage();
     _checkAuthAndNavigate();
-
   }
   Future<void> _checkAuthAndNavigate() async {
     // Initialize auth listener
@@ -34,12 +32,6 @@ class _HomeState extends State<splashscreen> {
     if (mounted) {
       Navigator.pushReplacementNamed(context, route);
     }
-  }
-
-
-  Future<void> _navigateToMainPage() async {
-    await Future.delayed(Duration(seconds: 2));
-    Navigator.pushReplacementNamed(context, '/login');
   }
 
   @override

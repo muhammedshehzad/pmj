@@ -3,14 +3,18 @@ import 'package:flutter_svg/svg.dart';
 import 'package:pmj_application/primary/paymentsPage.dart';
 import 'package:pmj_application/primary/settingsPage.dart';
 import 'package:provider/provider.dart';
-import 'package:shimmer/shimmer.dart'; // Add this dependency
+import 'package:shimmer/shimmer.dart';
+import '../assets/custom%20widgets/shimmer_widgets.dart';
 import '../assets/custom widgets/PeopleListViewHome.dart';
 import '../assets/custom widgets/logoutpopup.dart';
 import '../assets/custom widgets/transition.dart';
 import '../secondary/all_donations.dart';
+import '../services/local_database_service.dart';
+import '../models/donation_model.dart';
+import '../models/person_model.dart';
 import 'donorPage.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart'; // Add this for formatting the month name
+import 'package:intl/intl.dart';
+import '../services/image_cache_service.dart';
 
 class NavBarProvider with ChangeNotifier {
   int _selectedIndex = 0;
@@ -24,193 +28,10 @@ class NavBarProvider with ChangeNotifier {
 }
 
 class PeopleProvider with ChangeNotifier {
-  List<personHome> _peoplesHome = [];
-
-  List<personHome> get peoplesHome => _peoplesHome;
+  // This provider is now simplified since we use Isar streams directly
 }
 
-// Shimmer widget for the statistics container
-class StatsShimmer extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 115,
-      decoration: BoxDecoration(
-        border: Border.all(width: 1, color: Color(0xff1BA3A1)),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      width: MediaQuery.of(context).size.width,
-      child: Shimmer.fromColors(
-        baseColor: Colors.grey[300]!,
-        highlightColor: Colors.grey[100]!,
-        child: Column(
-          children: [
-            SizedBox(height: 15),
-            Container(
-              width: 60,
-              height: 14,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-            SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                Column(
-                  children: [
-                    Container(
-                      width: 30,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                    SizedBox(height: 5),
-                    Container(
-                      width: 50,
-                      height: 19,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ],
-                ),
-                Container(width: 1, color: Colors.grey[400], height: 50),
-                Column(
-                  children: [
-                    Container(
-                      width: 50,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                    SizedBox(height: 5),
-                    Container(
-                      width: 60,
-                      height: 19,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ],
-                ),
-                Container(width: 1, color: Colors.grey[400], height: 50),
-                Column(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                    SizedBox(height: 5),
-                    Container(
-                      width: 55,
-                      height: 19,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
-// Shimmer widget for donation list items
-class DonationListShimmer extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Shimmer.fromColors(
-      baseColor: Colors.grey[300]!,
-      highlightColor: Colors.grey[100]!,
-      child: ListView.builder(
-        itemCount: 6,
-        itemBuilder: (context, index) {
-          return Container(
-            margin: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey[200]!),
-            ),
-            child: Row(
-              children: [
-                // Avatar shimmer
-                CircleAvatar(
-                  radius: 25,
-                  backgroundColor: Colors.white,
-                ),
-                SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Name shimmer
-                      Container(
-                        width: double.infinity,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      // Date shimmer
-                      Container(
-                        width: 100,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      // Method shimmer
-                      Container(
-                        width: 80,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Amount shimmer
-                Container(
-                  width: 60,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
 
 class homePage extends StatefulWidget {
   @override
@@ -218,40 +39,15 @@ class homePage extends StatefulWidget {
 }
 
 class _homePageState extends State<homePage> {
-  Future<List<personHome>> _buildPersonHomeList(
-      List<Map<String, dynamic>> donations) async {
-    List<personHome> personHomeList = [];
-    for (var donation in donations) {
-      final data = donation['data'] as Map<String, dynamic>;
-      final donorId = donation['donorId'] as String?;
+  final LocalDatabaseService _localDb = LocalDatabaseService();
 
-      if (donorId == null || donorId.isEmpty) {
-        continue; // Skip invalid donorId
-      }
-
-      final donorSnapshot = await FirebaseFirestore.instance
-          .collection('donors')
-          .doc(donorId)
-          .get();
-
-      final donorData = donorSnapshot.data() as Map<String, dynamic>?;
-      final donorName = donorData?['name'] ?? 'Unknown';
-
-      personHomeList.add(
-        personHome(
-          name: donorName,
-          date: _formatTimestamp(data['timestamp']),
-          amount: (data['amount'] as num?)?.toInt() ?? 0,
-          donorId: donorId,
-          // Use donorId instead of photoUrl
-          method: data['paymentMethod'] ?? 'Unknown',
-          month: data['month'] ?? 'Unknown',
-          year: data['year'] ?? 'Unknown',
-          status: data['status'] ?? 'Unpaid',
-        ),
-      );
-    }
-    return personHomeList;
+  @override
+  void initState() {
+    super.initState();
+    // Initial sync with Firestore
+    _localDb.syncWithFirestore().catchError((error) {
+      debugPrint('Error syncing with Firestore: $error');
+    });
   }
 
   @override
@@ -263,10 +59,11 @@ class _homePageState extends State<homePage> {
       padding: const EdgeInsets.only(top: 16.0, left: 16, right: 16),
       child: Column(
         children: [
-          StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('donors').snapshots(),
+          StreamBuilder<List<Person>>(
+            stream: _localDb.watchPeople(),
             builder: (context, donorSnapshot) {
               if (donorSnapshot.connectionState == ConnectionState.waiting) {
+                // Show shimmer while loading top stats
                 return StatsShimmer();
               }
 
@@ -282,41 +79,28 @@ class _homePageState extends State<homePage> {
                 );
               }
 
-              if (!donorSnapshot.hasData || donorSnapshot.data!.docs.isEmpty) {
-                return Container(
-                  height: 115,
-                  decoration: BoxDecoration(
-                    border: Border.all(width: 1, color: Color(0xff1BA3A1)),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  width: MediaQuery.of(context).size.width,
-                  child: Center(child: Text('No donors found')),
-                );
+              final donors = donorSnapshot.data ?? [];
+              if (donors.isEmpty) {
+                // Show shimmer placeholder instead of plain empty text
+                return StatsShimmer();
               }
 
-              // Calculate the total expected amount from donors collection
+              // Calculate the total expected amount from donors
               double totalAmount = 0;
-              for (var doc in donorSnapshot.data!.docs) {
-                final data = doc.data() as Map<String, dynamic>;
-                final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
-                totalAmount += amount;
+              for (var donor in donors) {
+                totalAmount += donor.amount;
               }
 
-              return StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collectionGroup('paymentStatus')
-                    .where('month', isEqualTo: currentMonth)
-                    .where('year', isEqualTo: currentYear)
-                    .snapshots(),
-                builder: (context, paymentSnapshot) {
+              return StreamBuilder<List<Donation>>(
+                stream: _localDb.watchDonations(),
+                builder: (context, donationSnapshot) {
                   double collectedAmount = 0;
-                  if (paymentSnapshot.hasData) {
-                    for (var doc in paymentSnapshot.data!.docs) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      if (data['status'] == 'paid') {
-                        final amount =
-                            (data['amount'] as num?)?.toDouble() ?? 0.0;
-                        collectedAmount += amount;
+                  if (donationSnapshot.hasData) {
+                    for (var donation in donationSnapshot.data!) {
+                      if (donation.status == 'paid' && 
+                          donation.month == currentMonth && 
+                          donation.year == currentYear) {
+                        collectedAmount += donation.amount.toDouble();
                       }
                     }
                   }
@@ -487,51 +271,172 @@ class _homePageState extends State<homePage> {
             ],
           ),
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collectionGroup('paymentStatus')
-                  .where('status', isEqualTo: 'paid')
-                  .orderBy('timestamp', descending: true)
-                  .limit(8)
-                  .snapshots(),
+            child: StreamBuilder<List<Donation>>(
+              stream: _localDb.watchDonations(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
+                  // Show shimmer for recent donations list while loading
                   return DonationListShimmer();
                 }
                 if (snapshot.hasError) {
-                  print('Firestore Error: ${snapshot.error}');
+                  debugPrint('Database Error: ${snapshot.error}');
                   return Center(child: Text('Error: ${snapshot.error}'));
                 }
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return Center(child: Text('No recent donations'));
+                
+                final allDonations = snapshot.data ?? [];
+                // Filter for paid donations and take only recent 10
+                final recentDonations = allDonations
+                    .where((donation) => donation.status == 'paid')
+                    .take(10)
+                    .toList();
+
+                if (recentDonations.isEmpty) {
+                  // Show shimmer list placeholder instead of plain empty text
+                  return DonationListShimmer();
                 }
 
-                final donations = snapshot.data!.docs.map((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  final donorId = doc.reference.parent.parent?.id;
-                  return {'data': data, 'donorId': donorId};
-                }).toList();
-
-                return FutureBuilder<List<personHome>>(
-                  future: _buildPersonHomeList(donations),
-                  builder: (context, futureSnapshot) {
-                    if (futureSnapshot.connectionState ==
-                        ConnectionState.waiting) {
-                      return DonationListShimmer();
+                return RefreshIndicator(
+                  onRefresh: () async {
+                    try {
+                      await _localDb.syncWithFirestore();
+                    } catch (e) {
+                      debugPrint('Refresh error: $e');
                     }
-                    if (futureSnapshot.hasError) {
-                      print('Future Error: ${futureSnapshot.error}');
-                      return Center(
-                          child: Text('Error: ${futureSnapshot.error}'));
-                    }
-                    if (!futureSnapshot.hasData ||
-                        futureSnapshot.data!.isEmpty) {
-                      return Center(child: Text('No recent donations'));
-                    }
-
-                    return PeopleListViewHome(
-                        peoplesHome: futureSnapshot.data!);
                   },
+                  child: ListView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: recentDonations.length,
+                    itemBuilder: (context, index) {
+                    final donation = recentDonations[index];
+                    final formattedDate = donation.date.isNotEmpty ? '${donation.date} • ' : '';
+                    final monthYear = '${donation.month} ${donation.year}';
+
+                    return ListTile(
+                      onTap: () {
+                        // Handle donation tap if needed
+                      },
+                      leading: SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: ClipOval(
+                          child: Builder(
+                            builder: (context) {
+                              final effectiveUrl = (donation.imageUrl ?? '').trim();
+                              if (effectiveUrl.isEmpty) {
+                                return Container(
+                                  color: const Color(0xff1BA3A1),
+                                  child: Center(
+                                    child: Text(
+                                      donation.name.isNotEmpty ? donation.name[0].toUpperCase() : '',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              return FutureBuilder<ImageProvider?>(
+                                future: ImageCacheService().getImageProvider(effectiveUrl),
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState == ConnectionState.waiting) {
+                                    return Shimmer.fromColors(
+                                      baseColor: const Color(0xFFE0E0E0),
+                                      highlightColor: const Color(0xFFF5F5F5),
+                                      child: Container(color: Colors.white),
+                                    );
+                                  }
+
+                                  if (snapshot.hasData && snapshot.data != null) {
+                                    return Image(
+                                      image: snapshot.data!,
+                                      fit: BoxFit.cover,
+                                      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                                        if (wasSynchronouslyLoaded) return child;
+                                        return AnimatedOpacity(
+                                          opacity: frame == null ? 0 : 1,
+                                          duration: const Duration(milliseconds: 300),
+                                          curve: Curves.easeInOut,
+                                          child: child,
+                                        );
+                                      },
+                                      errorBuilder: (context, error, stackTrace) {
+                                        return Container(
+                                          color: const Color(0xff1BA3A1),
+                                          child: Center(
+                                            child: Text(
+                                              donation.name.isNotEmpty ? donation.name[0].toUpperCase() : '',
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    );
+                                  }
+
+                                  return Container(
+                                    color: const Color(0xff1BA3A1),
+                                    child: Center(
+                                      child: Text(
+                                        donation.name.isNotEmpty ? donation.name[0].toUpperCase() : '',
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      title: Text(
+                        donation.name,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontFamily: "Inter",
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '$formattedDate$monthYear',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontFamily: "Inter",
+                          fontWeight: FontWeight.w400,
+                          color: Color(0xff817D8A),
+                        ),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                "₹${donation.amount.toString()}",
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                  ),
                 );
               },
             ),
@@ -541,11 +446,7 @@ class _homePageState extends State<homePage> {
     );
   }
 
-  String _formatTimestamp(Timestamp? timestamp) {
-    if (timestamp == null) return "Unknown Date";
-    final date = timestamp.toDate();
-    return "${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}";
-  }
+
 }
 
 class BottomNavBarExample extends StatelessWidget {

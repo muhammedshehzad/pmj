@@ -9,32 +9,38 @@ import 'package:pmj_application/secondary/donations_provider.dart';
 import 'package:pmj_application/secondary/donorAdd.dart';
 import 'package:pmj_application/secondary/donorDetails.dart';
 import 'package:pmj_application/secondary/user_service.dart';
+import 'package:pmj_application/providers/payment_provider.dart';
+import 'package:pmj_application/primary/paymentsPage.dart' show PaymentsPageProvider;
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'assets/custom widgets/GPay.dart';
-import 'package:hive_flutter/hive_flutter.dart';
-import 'assets/custom widgets/PeopleListViewHome.dart';
+import 'package:pmj_application/services/local_database_service.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  await Hive.initFlutter();
-  Hive.registerAdapter(personHomeAdapter());
-  await Hive.openBox<personHome>('donationsBox');
-  await Hive.openBox<Map>('donorDetailsBox');
+  
+  // Initialize LocalDatabaseService (Isar)
+  final localDb = LocalDatabaseService();
+  await localDb.init();
+  
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(
-          create: (context) => NavBarProvider(), child: BottomNavBarExample(),),
+          create: (context) => NavBarProvider(), 
+          child: BottomNavBarExample(),
+        ),
         ChangeNotifierProvider(create: (context) => PeopleProvider()),
         ChangeNotifierProvider(create: (_) => PaymentProvider()),
+        ChangeNotifierProvider(create: (_) => PaymentsPageProvider()),
         ChangeNotifierProvider(create: (_) => DonationsProvider()),
-        Provider(create: (_) => UserService()), // Add UserService provider
-
-        // Add other providers if necessary
+        Provider(create: (_) => UserService()),
+        Provider<LocalDatabaseService>.value(value: localDb),
       ],
       child: MyApp(),
     ),

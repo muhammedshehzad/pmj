@@ -1,10 +1,19 @@
+import 'package:dropdown_search/dropdown_search.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter_svg/svg.dart';
+import 'package:pmj_application/assets/custom widgets/logoutpopup.dart';
+import 'package:pmj_application/models/donation_model.dart';
+import 'package:pmj_application/models/person_model.dart';
+import 'package:pmj_application/services/local_database_service.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:dropdown_search/dropdown_search.dart';
+import 'package:intl/intl.dart';
+import 'package:shimmer/shimmer.dart';
+import '../assets/custom%20widgets/shimmer_widgets.dart';
 import '../assets/custom widgets/transition.dart';
 import '../secondary/all_donations.dart';
+import '../services/image_cache_service.dart';
+import '../services/local_database_service.dart';
 
 class MonthlyStatus {
   final String userName;
@@ -20,13 +29,15 @@ class MonthlyStatus {
   });
 }
 
-class PaymentProvider extends ChangeNotifier {
+class PaymentsPageProvider extends ChangeNotifier {
   String? _selectedMonth;
   String? _selectedPayment;
   String? _selectedDonor;
   String? _selectedYear;
   List<Map<String, dynamic>> _donors = [];
   List<MonthlyStatus> _paymentStatuses = [];
+  bool _isMultiMonthMode = false;
+  List<String> _selectedMonths = [];
 
   List<String> get months => [
         'January',
@@ -62,13 +73,48 @@ class PaymentProvider extends ChangeNotifier {
 
   List<MonthlyStatus> get paymentStatuses => _paymentStatuses;
 
-  PaymentProvider() {
+  bool get isMultiMonthMode => _isMultiMonthMode;
+
+  List<String> get selectedMonths => _selectedMonths;
+
+  PaymentsPageProvider() {
     _selectedYear = DateTime.now().year.toString();
     initializePaymentStatuses();
   }
 
   void setSelectedMonth(String? month) {
-    _selectedMonth = month;
+    if (_isMultiMonthMode) {
+      if (month != null) {
+        if (_selectedMonths.contains(month)) {
+          _selectedMonths.remove(month);
+        } else {
+          _selectedMonths.add(month);
+        }
+      }
+    } else {
+      _selectedMonth = month;
+    }
+    notifyListeners();
+  }
+
+  void toggleMultiMonthMode() {
+    _isMultiMonthMode = !_isMultiMonthMode;
+    if (!_isMultiMonthMode) {
+      _selectedMonths.clear();
+      if (_selectedMonths.isNotEmpty) {
+        _selectedMonth = _selectedMonths.first;
+      }
+    } else {
+      if (_selectedMonth != null) {
+        _selectedMonths = [_selectedMonth!];
+      }
+      _selectedMonth = null;
+    }
+    notifyListeners();
+  }
+
+  void clearSelectedMonths() {
+    _selectedMonths.clear();
     notifyListeners();
   }
 
@@ -192,11 +238,21 @@ class PaymentProvider extends ChangeNotifier {
   }
 
   Future<void> recordPayment(String donorId) async {
-    if (_selectedMonth == null ||
-        _selectedYear == null ||
-        _selectedPayment == null ||
-        amountController.text.isEmpty) {
-      throw Exception('Please fill all required fields');
+    // Validate fields based on mode
+    if (_isMultiMonthMode) {
+      if (_selectedMonths.isEmpty ||
+          _selectedYear == null ||
+          _selectedPayment == null ||
+          amountController.text.isEmpty) {
+        throw Exception('Please fill all required fields');
+      }
+    } else {
+      if (_selectedMonth == null ||
+          _selectedYear == null ||
+          _selectedPayment == null ||
+          amountController.text.isEmpty) {
+        throw Exception('Please fill all required fields');
+      }
     }
 
     final amount = int.tryParse(amountController.text);
@@ -206,25 +262,43 @@ class PaymentProvider extends ChangeNotifier {
 
     final donorRef =
         FirebaseFirestore.instance.collection('donors').doc(donorId);
-    final monthYearKey = '$_selectedMonth-$_selectedYear';
-    final statusRef = donorRef.collection('paymentStatus').doc(monthYearKey);
-
-    // Check if payment already exists
-    final existingPayment = await statusRef.get();
-    if (existingPayment.exists) {
+    
+    // Get months to process
+    List<String> monthsToProcess = _isMultiMonthMode ? _selectedMonths : [_selectedMonth!];
+    
+    // Check for existing payments first
+    List<String> existingPayments = [];
+    for (String month in monthsToProcess) {
+      final monthYearKey = '$month-$_selectedYear';
+      final statusRef = donorRef.collection('paymentStatus').doc(monthYearKey);
+      final existingPayment = await statusRef.get();
+      if (existingPayment.exists && existingPayment.data()?['status'] == 'paid') {
+        existingPayments.add('$month $_selectedYear');
+      }
+    }
+    
+    if (existingPayments.isNotEmpty) {
       throw Exception(
-          'Payment already added for $_selectedMonth $_selectedYear');
+          'Payment already exists for: ${existingPayments.join(', ')}');
     }
 
-    await statusRef.set({
-      'month': _selectedMonth,
-      'year': _selectedYear,
-      'status': 'paid',
-      'amount': amount,
-      'paymentMethod': _selectedPayment,
-      'timestamp': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-
+    // Record payments for all selected months
+    WriteBatch batch = FirebaseFirestore.instance.batch();
+    for (String month in monthsToProcess) {
+      final monthYearKey = '$month-$_selectedYear';
+      final statusRef = donorRef.collection('paymentStatus').doc(monthYearKey);
+      
+      batch.set(statusRef, {
+        'month': month,
+        'year': _selectedYear,
+        'status': 'paid',
+        'amount': amount,
+        'paymentMethod': _selectedPayment,
+        'timestamp': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+    
+    await batch.commit();
     await fetchPaymentStatuses(donorId);
   }
 
@@ -235,6 +309,8 @@ class PaymentProvider extends ChangeNotifier {
     _selectedDonor = null;
     _selectedYear = DateTime.now().year.toString();
     _paymentStatuses = [];
+    _selectedMonths.clear();
+    _isMultiMonthMode = false;
     notifyListeners();
   }
 }
@@ -249,19 +325,61 @@ class PaymentsPage extends StatefulWidget {
 class _PaymentsPageState extends State<PaymentsPage> {
   final List<String> paymentMethods = ["Cash", "Account"];
   bool _isLoading = false;
+  final LocalDatabaseService _localDb = LocalDatabaseService();
+
+  void _showProcessingDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          padding: const EdgeInsets.all(24.0),
+          constraints: const BoxConstraints(maxWidth: 300),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xff1BA3A1)),
+                strokeWidth: 3,
+              ),
+              const SizedBox(height: 24),
+              Text(
+                message,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[800],
+                  fontFamily: 'Inter',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Please wait while we process your request',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                  fontFamily: 'Inter',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      setState(() => _isLoading = true);
       try {
-        await Provider.of<PaymentProvider>(context, listen: false)
+        await Provider.of<PaymentsPageProvider>(context, listen: false)
             .fetchDonors();
       } catch (e) {
         _showErrorDialog('Failed to load donors: $e');
-      } finally {
-        setState(() => _isLoading = false);
       }
     });
   }
@@ -313,12 +431,18 @@ class _PaymentsPageState extends State<PaymentsPage> {
   }
 
   void _showSuccessDialog() {
+    final provider = Provider.of<PaymentsPageProvider>(context, listen: false);
+    final monthCount = provider.isMultiMonthMode ? provider.selectedMonths.length : 1;
+    final message = monthCount > 1 
+        ? 'Payment Recorded for $monthCount months!'
+        : 'Payment Recorded!';
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        content: const Text(
-          'Payment Recorded!',
-          style: TextStyle(
+        content: Text(
+          message,
+          style: const TextStyle(
             fontFamily: "Inter",
             fontWeight: FontWeight.w400,
             fontSize: 12,
@@ -398,13 +522,23 @@ class _PaymentsPageState extends State<PaymentsPage> {
 
   Future<void> _recordPayment(String donorId) async {
     setState(() => _isLoading = true);
+    // Show the same styled modal loading dialog used in yearly PDF generation
+    _showProcessingDialog('Recording payment...');
     try {
-      await Provider.of<PaymentProvider>(context, listen: false)
+      await Provider.of<PaymentsPageProvider>(context, listen: false)
           .recordPayment(donorId);
+      // Dismiss loading before showing success UI
+      Navigator.of(context, rootNavigator: true).pop();
+      // Clear form fields after successful submission
+      Provider.of<PaymentsPageProvider>(context, listen: false).clearFields();
+      // Trigger a background sync so Home page recent donations updates
+      LocalDatabaseService().syncWithFirestore();
       _showSuccessDialog();
     } catch (e) {
+      // Dismiss loading before showing error UI
+      Navigator.of(context, rootNavigator: true).pop();
       if (e.toString().contains('Payment already added')) {
-        final provider = Provider.of<PaymentProvider>(context, listen: false);
+        final provider = Provider.of<PaymentsPageProvider>(context, listen: false);
         _showAlreadyAddedDialog(provider.selectedMonth ?? 'Unknown',
             provider.selectedYear ?? 'Unknown');
       } else {
@@ -417,13 +551,11 @@ class _PaymentsPageState extends State<PaymentsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final provider = Provider.of<PaymentProvider>(context);
+    final provider = Provider.of<PaymentsPageProvider>(context);
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
+      body: SingleChildScrollView(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
@@ -551,47 +683,166 @@ class _PaymentsPageState extends State<PaymentsPage> {
                           itemAsString: (String? item) => item ?? '',
                         ),
                         const SizedBox(height: 10),
-                        const Text(
-                          'Select Month',
-                          style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.black,
-                              fontWeight: FontWeight.bold),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Select Month(s)',
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                            Row(
+                              children: [
+                                Text(
+                                  'Multi-month',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: Colors.grey[600],
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Transform.scale(
+                                  scale: 0.8,
+                                  child: Switch(
+                                    value: provider.isMultiMonthMode,
+                                    onChanged: (value) {
+                                      provider.toggleMultiMonthMode();
+                                    },
+                                    activeColor: const Color(0xFF1BA3A1),
+                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 4),
-                        DropdownButtonFormField<String>(
-                          decoration: InputDecoration(
-                            labelText: "January",
-                            labelStyle: TextStyle(
-                                color: Colors.grey.shade500,
-                                fontWeight: FontWeight.w400,
-                                fontSize: 12),
-                            floatingLabelBehavior: FloatingLabelBehavior.never,
-                            enabledBorder: OutlineInputBorder(
-                              borderSide: const BorderSide(
-                                  color: Color(0xFF1BA3A1), width: 1.0),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderSide: const BorderSide(
-                                  color: Color(0xFF1BA3A1), width: 1.0),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                          value: provider.selectedMonth,
-                          items: provider.months.map((String month) {
-                            return DropdownMenuItem<String>(
-                              value: month,
-                              child: Text(
-                                month,
-                                style: const TextStyle(fontSize: 12),
+                        if (!provider.isMultiMonthMode)
+                          DropdownButtonFormField<String>(
+                            decoration: InputDecoration(
+                              labelText: "January",
+                              labelStyle: TextStyle(
+                                  color: Colors.grey.shade500,
+                                  fontWeight: FontWeight.w400,
+                                  fontSize: 12),
+                              floatingLabelBehavior: FloatingLabelBehavior.never,
+                              enabledBorder: OutlineInputBorder(
+                                borderSide: const BorderSide(
+                                    color: Color(0xFF1BA3A1), width: 1.0),
+                                borderRadius: BorderRadius.circular(4),
                               ),
-                            );
-                          }).toList(),
-                          onChanged: (String? newValue) {
-                            provider.setSelectedMonth(newValue);
-                          },
-                        ),
+                              focusedBorder: OutlineInputBorder(
+                                borderSide: const BorderSide(
+                                    color: Color(0xFF1BA3A1), width: 1.0),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                            value: provider.selectedMonth,
+                            items: provider.months.map((String month) {
+                              return DropdownMenuItem<String>(
+                                value: month,
+                                child: Text(
+                                  month,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (String? newValue) {
+                              provider.setSelectedMonth(newValue);
+                            },
+                          ),
+                        if (provider.isMultiMonthMode)
+                          Column(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: const Color(0xFF1BA3A1),
+                                    width: 1.0,
+                                  ),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          provider.selectedMonths.isEmpty
+                                              ? 'Select months'
+                                              : '${provider.selectedMonths.length} month(s) selected',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: provider.selectedMonths.isEmpty
+                                                ? Colors.grey.shade500
+                                                : Colors.black87,
+                                          ),
+                                        ),
+                                        if (provider.selectedMonths.isNotEmpty)
+                                          GestureDetector(
+                                            onTap: () => provider.clearSelectedMonths(),
+                                            child: Text(
+                                              'Clear',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: const Color(0xFF1BA3A1),
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Wrap(
+                                      spacing: 6,
+                                      runSpacing: 6,
+                                      children: provider.months.map((month) {
+                                        final isSelected = provider.selectedMonths.contains(month);
+                                        return GestureDetector(
+                                          onTap: () => provider.setSelectedMonth(month),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 6,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: isSelected
+                                                  ? const Color(0xFF1BA3A1)
+                                                  : Colors.grey[100],
+                                              borderRadius: BorderRadius.circular(16),
+                                              border: Border.all(
+                                                color: isSelected
+                                                    ? const Color(0xFF1BA3A1)
+                                                    : Colors.grey[300]!,
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              month.substring(0, 3), // Show abbreviated month
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: isSelected
+                                                    ? Colors.white
+                                                    : Colors.grey[700],
+                                                fontWeight: isSelected
+                                                    ? FontWeight.w600
+                                                    : FontWeight.w400,
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      }).toList(),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         const SizedBox(height: 10),
                         const Text(
                           'Select Year',
@@ -751,15 +1002,11 @@ class _PaymentsPageState extends State<PaymentsPage> {
                                     );
                                     _recordPayment(donor['id']);
                                   },
-                            child: _isLoading
-                                ? const CircularProgressIndicator(
-                                    color: Colors.white)
-                                : const Text(
-                                    'Submit',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 14),
-                                  ),
+                            child: const Text(
+                              'Submit',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600, fontSize: 14),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -779,11 +1026,10 @@ class _PaymentsPageState extends State<PaymentsPage> {
                               onPressed: () {
                                 Navigator.push(
                                   context,
-                                  SlidingPageTransitionRL(
-                                      page: AllDonationsPage()),
+                                  SlidingPageTransitionRL(page: AllDonationsPage()),
                                 );
                               },
-                              child: const Text(
+                              child: Text(
                                 "View More",
                                 style: TextStyle(
                                   fontSize: 10,
@@ -798,143 +1044,185 @@ class _PaymentsPageState extends State<PaymentsPage> {
                         ),
                         SizedBox(
                           height: 300,
-                          child: StreamBuilder<QuerySnapshot>(
-                            stream: FirebaseFirestore.instance
-                                .collectionGroup('paymentStatus')
-                                .where('status', isEqualTo: 'paid')
-                                .orderBy('timestamp', descending: true)
-                                .limit(10)
-                                .snapshots(),
+                          child: StreamBuilder<List<Donation>>(
+                            stream: _localDb.watchDonations(),
                             builder: (context, snapshot) {
-                              if (snapshot.connectionState ==
-                                  ConnectionState.waiting) {
-                                return const Center(
-                                    child: CircularProgressIndicator());
+                              if (snapshot.connectionState == ConnectionState.waiting) {
+                                return PaymentsFormShimmer();
                               }
                               if (snapshot.hasError) {
-                                return Center(
-                                    child: Text('Error: ${snapshot.error}'));
-                              }
-                              if (!snapshot.hasData ||
-                                  snapshot.data!.docs.isEmpty) {
-                                return const Center(
-                                    child: Text('No recent donations found'));
+                                return Center(child: Text('Error: ${snapshot.error}'));
                               }
 
-                              final payments = snapshot.data!.docs;
+                              final allDonations = snapshot.data ?? [];
+                              final recentDonations = allDonations
+                                  .where((d) => d.status == 'paid')
+                                  .take(10)
+                                  .toList();
 
-                              return ListView.builder(
-                                shrinkWrap: true,
-                                physics: const BouncingScrollPhysics(),
-                                itemCount: payments.length,
-                                itemBuilder: (context, index) {
-                                  final payment = payments[index].data()
-                                      as Map<String, dynamic>;
-                                  final donorId = payments[index]
-                                      .reference
-                                      .parent
-                                      .parent
-                                      ?.id;
+                              if (recentDonations.isEmpty) {
+                                return Shimmer.fromColors(
+                                  baseColor: const Color(0xFFE0E0E0),
+                                  highlightColor: const Color(0xFFF5F5F5),
+                                  child: ListView.builder(
+                                    itemCount: 6,
+                                    itemBuilder: (context, index) => Container(
+                                      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                                      height: 64,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: Colors.grey[200]!),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
 
-                                  return FutureBuilder<DocumentSnapshot>(
-                                    future: FirebaseFirestore.instance
-                                        .collection('donors')
-                                        .doc(donorId)
-                                        .get(),
-                                    builder: (context, donorSnapshot) {
-                                      if (!donorSnapshot.hasData) {
-                                        return const ListTile(title: Text(''));
-                                      }
-
-                                      final donorData = donorSnapshot.data!
-                                          .data() as Map<String, dynamic>;
-                                      final donorName =
-                                          donorData['name'] ?? 'Unknown';
-                                      final donorImage =
-                                          donorData['imageUrl'] ??
-                                              'https://via.placeholder.com/150';
-
-                                      return ListTile(
-                                        leading: CircleAvatar(
-                                          radius: 20,
-                                          backgroundImage: donorImage != null &&
-                                                  donorImage.isNotEmpty
-                                              ? NetworkImage(donorImage)
-                                              : null,
-                                          backgroundColor: donorImage != null &&
-                                                  donorImage.isNotEmpty
-                                              ? null
-                                              : Color(0xff1BA3A1),
-                                          child: donorImage == null ||
-                                                  donorImage.isEmpty
-                                              ? Text(
-                                                  donorName.isNotEmpty
-                                                      ? donorName[0]
-                                                          .toUpperCase()
-                                                      : '',
-                                                  style: const TextStyle(
-                                                    fontSize: 16,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.white,
-                                                  ),
-                                                )
-                                              : null,
-                                        ),
-                                        title: Text(
-                                          donorName,
-                                          style: const TextStyle(
-                                            fontSize: 14,
-                                            fontFamily: "Inter",
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        subtitle: Text(
-                                          "${payment['month']} ${payment['year']}",
-                                          style: const TextStyle(
-                                            fontSize: 10,
-                                            fontFamily: "Inter",
-                                            fontWeight: FontWeight.w400,
-                                            color: Color(0xff817D8A),
-                                          ),
-                                        ),
-                                        trailing: Padding(
-                                          padding:
-                                              const EdgeInsets.only(right: 1.0),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.end,
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              Text(
-                                                "₹${payment['amount'].toString()}",
-                                                style: const TextStyle(
-                                                  fontSize: 16,
-                                                  fontFamily: "Inter",
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                              Padding(
-                                                padding: const EdgeInsets.only(
-                                                    top: 4.0),
-                                                child: Text(
-                                                  payment['paymentMethod'] ??
-                                                      'Unknown',
-                                                  style: const TextStyle(
-                                                    fontSize: 10,
-                                                    fontFamily: "Inter",
-                                                    fontWeight: FontWeight.w400,
-                                                    color: Color(0xff817D8A),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  );
+                              return RefreshIndicator(
+                                onRefresh: () async {
+                                  try {
+                                    await _localDb.syncWithFirestore();
+                                  } catch (e) {
+                                    debugPrint('PaymentsPage refresh error: $e');
+                                  }
                                 },
+                                child: ListView.builder(
+                                  physics: const AlwaysScrollableScrollPhysics(),
+                                  itemCount: recentDonations.length,
+                                  itemBuilder: (context, index) {
+                                    final donation = recentDonations[index];
+                                    final formattedDate = donation.date.isNotEmpty ? '${donation.date} • ' : '';
+                                    final monthYear = '${donation.month} ${donation.year}';
+
+                                    return ListTile(
+                                      leading: SizedBox(
+                                        width: 40,
+                                        height: 40,
+                                        child: ClipOval(
+                                          child: Builder(
+                                            builder: (context) {
+                                              final effectiveUrl = (donation.imageUrl ?? '').trim();
+                                              if (effectiveUrl.isEmpty) {
+                                                return Container(
+                                                  color: const Color(0xff1BA3A1),
+                                                  child: Center(
+                                                    child: Text(
+                                                      donation.name.isNotEmpty ? donation.name[0].toUpperCase() : '',
+                                                      style: const TextStyle(
+                                                        fontSize: 16,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Colors.white,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+
+                                              return FutureBuilder<ImageProvider?>(
+                                                future: ImageCacheService().getImageProvider(effectiveUrl),
+                                                builder: (context, snapshot) {
+                                                  if (snapshot.connectionState == ConnectionState.waiting) {
+                                                    return Shimmer.fromColors(
+                                                      baseColor: const Color(0xFFE0E0E0),
+                                                      highlightColor: const Color(0xFFF5F5F5),
+                                                      child: Container(color: Colors.white),
+                                                    );
+                                                  }
+
+                                                  if (snapshot.hasData && snapshot.data != null) {
+                                                    return Image(
+                                                      image: snapshot.data!,
+                                                      fit: BoxFit.cover,
+                                                      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                                                        if (wasSynchronouslyLoaded) return child;
+                                                        return AnimatedOpacity(
+                                                          opacity: frame == null ? 0 : 1,
+                                                          duration: const Duration(milliseconds: 300),
+                                                          curve: Curves.easeInOut,
+                                                          child: child,
+                                                        );
+                                                      },
+                                                      errorBuilder: (context, error, stackTrace) {
+                                                        return Container(
+                                                          color: const Color(0xff1BA3A1),
+                                                          child: Center(
+                                                            child: Text(
+                                                              donation.name.isNotEmpty ? donation.name[0].toUpperCase() : '',
+                                                              style: const TextStyle(
+                                                                fontSize: 16,
+                                                                fontWeight: FontWeight.bold,
+                                                                color: Colors.white,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        );
+                                                      },
+                                                    );
+                                                  }
+
+                                                  return Container(
+                                                    color: const Color(0xff1BA3A1),
+                                                    child: Center(
+                                                      child: Text(
+                                                        donation.name.isNotEmpty ? donation.name[0].toUpperCase() : '',
+                                                        style: const TextStyle(
+                                                          fontSize: 16,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: Colors.white,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                      title: Text(
+                                        donation.name,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontFamily: "Inter",
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      subtitle: Text(
+                                        '$formattedDate$monthYear',
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          fontFamily: "Inter",
+                                          fontWeight: FontWeight.w400,
+                                          color: Color(0xff817D8A),
+                                        ),
+                                      ),
+                                      trailing: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Text(
+                                            "₹${donation.amount}",
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            donation.method,
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              fontFamily: "Inter",
+                                              fontWeight: FontWeight.w400,
+                                              color: Color(0xff817D8A),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
                               );
                             },
                           ),

@@ -1,60 +1,91 @@
 import 'dart:async';
+import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../assets/custom widgets/PeopleListViewHome.dart';
-import 'package:hive/hive.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:isar/isar.dart';
+import '../models/person_model.dart';
+import '../services/local_database_service.dart';
 
 class DonationsProvider extends ChangeNotifier {
   final Map<String, Map<String, dynamic>> _donorCache = {};
-  List<personHome> _donations = [];
+  final LocalDatabaseService _localDb;
+  List<Person> _donations = [];
   bool _isLoading = false;
   String? _errorMessage;
   QuerySnapshot? _latestSnapshot;
   bool _hasInitialData = false;
   StreamSubscription<QuerySnapshot>? _donationsSubscription;
-  Box<personHome>? _donationsBox;
+  late Isar _isar;
+  bool _isInitialized = false;
 
-  List<personHome> get donations => _donations;
+  List<Person> get donations => _donations;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+  bool get isInitialized => _isInitialized;
 
-  DonationsProvider() {
-    _initHiveAndLoad();
+  DonationsProvider({LocalDatabaseService? localDb}) 
+      : _localDb = localDb ?? LocalDatabaseService() {
+    _initIsarAndLoad();
   }
 
-  Future<void> _initHiveAndLoad() async {
-    // Open Hive box for donations
-    _donationsBox = await Hive.openBox<personHome>('donationsBox');
-    // Load cached donations if available
-    final cached = _donationsBox!.values.toList();
-    if (cached.isNotEmpty) {
-      _donations = cached;
+  Future<void> _initIsarAndLoad() async {
+    try {
+      _isLoading = true;
+      notifyListeners();
+      
+      // Initialize local database
+      await _localDb.init();
+      _isar = await _localDb.isar;
+      
+      // Initial sync with Firestore
+      await _localDb.syncWithFirestore();
+      
+      // Load cached donations
+      await _loadCachedDonations();
+      
+      // Start Firestore listening
+      _listenToDonations();
+    } catch (e, stackTrace) {
+      _errorMessage = 'Failed to initialize local storage: $e';
+      log('Error in _initIsarAndLoad', error: e, stackTrace: stackTrace);
       _isLoading = false;
+      _isInitialized = true;
       notifyListeners();
     }
-    // Start Firestore listening
-    _listenToDonations();
   }
 
   void _listenToDonations() {
     _isLoading = true;
     notifyListeners();
+    
     _donationsSubscription = FirebaseFirestore.instance
         .collectionGroup('paymentStatus')
         .where('status', isEqualTo: 'paid')
         .orderBy('timestamp', descending: true)
         .snapshots()
         .listen((snapshot) async {
-      if (_latestSnapshot == null || _latestSnapshot!.docs.length != snapshot.docs.length || _hasDataChanged(snapshot)) {
-        _latestSnapshot = snapshot;
-        _hasInitialData = true;
-        await _processDocumentsAsync(snapshot.docs);
+      try {
+        if (!_isInitialized) {
+          _isInitialized = true;
+          notifyListeners();
+        }
+        
+        if (_latestSnapshot == null || 
+            _latestSnapshot!.docs.length != snapshot.docs.length || 
+            _hasDataChanged(snapshot)) {
+          _latestSnapshot = snapshot;
+          _hasInitialData = true;
+          await _processDocumentsAsync(snapshot.docs);
+        }
+      } catch (e) {
+        _errorMessage = 'Error processing updates: $e';
+        _isLoading = false;
+        notifyListeners();
       }
     }, onError: (error) {
+      _errorMessage = 'Firestore error: ${error.toString()}';
       _isLoading = false;
-      _errorMessage = error.toString();
       notifyListeners();
     });
   }
@@ -73,74 +104,120 @@ class DonationsProvider extends ChangeNotifier {
   }
 
   Future<void> _processDocumentsAsync(List<QueryDocumentSnapshot> docs) async {
+    if (!_isInitialized) return;
+    
     _isLoading = true;
     notifyListeners();
+    
     try {
-      Set<String> donorIds = {};
-      for (var doc in docs) {
-        final donorId = doc.reference.parent.parent?.id;
-        if (donorId != null && donorId.isNotEmpty) {
-          donorIds.add(donorId);
-        }
-      }
-      await _prefetchDonors(donorIds.toList());
-      List<personHome> newDonations = [];
-      for (var doc in docs) {
-        final data = doc.data() as Map<String, dynamic>?;
-        if (data == null) continue;
-        final donorId = doc.reference.parent.parent?.id;
-        if (donorId != null && donorId.isNotEmpty && _donorCache.containsKey(donorId)) {
-          final donorData = _donorCache[donorId]!;
-          final donorName = donorData['name'] ?? 'Unknown Donor';
-          newDonations.add(personHome(
-            name: donorName,
-            date: _formatTimestamp(data['timestamp']),
-            amount: _parseAmount(data['amount']),
-            donorId: donorId,
-            method: data['paymentMethod']?.toString() ?? 'Unknown',
-            month: data['month']?.toString() ?? 'Unknown',
-            year: data['year']?.toString() ?? 'Unknown',
-            status: data['status']?.toString() ?? 'Unpaid',
-            documentPath: doc.reference.path,
-          ));
-        }
-      }
-      _donations = newDonations;
-      // Save to Hive
-      await _donationsBox?.clear();
-      await _donationsBox?.addAll(_donations);
-      _isLoading = false;
+      // Let LocalDatabaseService handle the sync
+      await _localDb.syncWithFirestore();
+      
+      // Reload from local database
+      await _loadCachedDonations();
+      
       _errorMessage = null;
-      notifyListeners();
-    } catch (e) {
+    } catch (e, stackTrace) {
+      _errorMessage = 'Failed to process donations: $e';
+      log('Error in _processDocumentsAsync', error: e, stackTrace: stackTrace);
+      
+      // Try to load from cache if online processing fails
+      try {
+        await _loadCachedDonations();
+        if (_donations.isNotEmpty) {
+          _errorMessage = 'Showing cached data: ${e.toString()}';
+        }
+      } catch (cacheError) {
+        log('Error loading from cache', error: cacheError);
+      }
+    } finally {
       _isLoading = false;
-      _errorMessage = 'Failed to process donations: ${e.toString()}';
       notifyListeners();
+    }
+  }
+
+  Future<void> _loadCachedDonations() async {
+    if (!_isInitialized) return;
+    
+    try {
+      final isar = await _localDb.isar;
+      final cachedDonations = await isar.persons
+          .where()
+          .sortByTimestampDesc()
+          .findAll();
+          
+      if (cachedDonations.isNotEmpty) {
+        _donations = cachedDonations;
+        
+        // Pre-fetch donor data for cached donations
+        final donorIds = _donations
+            .where((p) => p.donorId != null)
+            .map((p) => p.donorId!)
+            .toSet()
+            .toList();
+        
+        if (donorIds.isNotEmpty) {
+          await _prefetchDonors(donorIds);
+        }
+        
+        notifyListeners();
+      }
+    } catch (e, stackTrace) {
+      log('Error loading cached donations', error: e, stackTrace: stackTrace);
+      rethrow;
     }
   }
 
   Future<void> _prefetchDonors(List<String> donorIds) async {
     if (donorIds.isEmpty) return;
+    
+    // Filter out already cached donors
+    final uncachedIds = donorIds.where((id) => !_donorCache.containsKey(id)).toList();
+    if (uncachedIds.isEmpty) return;
+    
     const int batchSize = 10;
-    for (int i = 0; i < donorIds.length; i += batchSize) {
-      final end = (i + batchSize < donorIds.length) ? i + batchSize : donorIds.length;
-      final batch = donorIds.sublist(i, end);
-      if (batch.isEmpty) continue;
+    for (int i = 0; i < uncachedIds.length; i += batchSize) {
+      final end = (i + batchSize < uncachedIds.length) ? i + batchSize : uncachedIds.length;
+      final batch = uncachedIds.sublist(i, end);
+      
       try {
         final donorsSnapshot = await FirebaseFirestore.instance
             .collection('donors')
             .where(FieldPath.documentId, whereIn: batch)
-            .get(const GetOptions(source: Source.serverAndCache));
+            .get(const GetOptions(source: Source.cache));
+        
+        // Update cache with fetched data
         for (var doc in donorsSnapshot.docs) {
           if (doc.exists && doc.data().isNotEmpty) {
             _donorCache[doc.id] = doc.data();
           }
         }
-        if (i + batchSize < donorIds.length) {
+        
+        // If we didn't get all requested donors from cache, try server
+        final missingIds = batch.where((id) => !_donorCache.containsKey(id)).toList();
+        if (missingIds.isNotEmpty) {
+          try {
+            final serverSnapshot = await FirebaseFirestore.instance
+                .collection('donors')
+                .where(FieldPath.documentId, whereIn: missingIds)
+                .get(const GetOptions(source: Source.server));
+                
+            for (var doc in serverSnapshot.docs) {
+              if (doc.exists && doc.data().isNotEmpty) {
+                _donorCache[doc.id] = doc.data();
+              }
+            }
+          } catch (e) {
+            log('Error fetching donors from server', error: e);
+          }
+        }
+        
+        // Small delay between batches to avoid overwhelming the network
+        if (i + batchSize < uncachedIds.length) {
           await Future.delayed(const Duration(milliseconds: 50));
         }
-      } catch (e) {
-        // Continue with other batches even if one fails
+      } catch (e, stackTrace) {
+        log('Error fetching donors batch', error: e, stackTrace: stackTrace);
       }
     }
   }
@@ -151,31 +228,94 @@ class DonationsProvider extends ChangeNotifier {
     if (amount is double) return amount.toInt();
     if (amount is String) {
       try {
-        return int.parse(amount);
-      } catch (e) {
-        try {
-          return double.parse(amount).toInt();
-        } catch (e) {
-          return 0;
+        // Remove any non-numeric characters except decimal point
+        final cleanAmount = amount.replaceAll(RegExp(r'[^\d.]'), '');
+        if (cleanAmount.contains('.')) {
+          return double.parse(cleanAmount).toInt();
         }
+        return int.parse(cleanAmount);
+      } catch (e) {
+        debugPrint('Error parsing amount "$amount": $e');
+        return 0;
       }
     }
     return 0;
   }
 
   String _formatTimestamp(dynamic timestamp) {
-    if (timestamp == null) return '';
+    if (timestamp == null) return 'Unknown Date';
+    
+    DateTime date;
     if (timestamp is Timestamp) {
-      final dt = timestamp.toDate();
-      return '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}';
+      date = timestamp.toDate();
+    } else if (timestamp is DateTime) {
+      date = timestamp;
+    } else if (timestamp is String) {
+      try {
+        date = DateTime.parse(timestamp);
+      } catch (e) {
+        debugPrint('Error parsing timestamp "$timestamp": $e');
+        return 'Invalid Date';
+      }
+    } else {
+      return 'Unknown Date';
     }
-    return timestamp.toString();
+    
+    // Format: DD/MM/YYYY
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    return '$day/$month/${date.year}';
   }
 
   @override
-  void dispose() {
-    _donationsSubscription?.cancel();
-    _donationsBox?.close();
+  void dispose() async {
+    // Cancel any active subscriptions
+    await _donationsSubscription?.cancel();
+    _donationsSubscription = null;
+    
+    // Clear caches to free memory
+    _donorCache.clear();
+    _donations = [];
+    
+    // Note: We don't close Isar here as it's managed by LocalDatabaseService
+    // which is a singleton and should handle its own cleanup
+    
     super.dispose();
   }
-} 
+  
+  // Add a method to manually refresh data
+  Future<void> refresh() async {
+    try {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+      
+      // Cancel any existing subscription
+      await _donationsSubscription?.cancel();
+      
+      // Clear caches
+      _donations = [];
+      _donorCache.clear();
+      _latestSnapshot = null;
+      _hasInitialData = false;
+      
+      // Force sync with Firestore
+      await _localDb.syncWithFirestore();
+      
+      // Reload data
+      await _loadCachedDonations();
+      
+      // Restart the listener
+      _listenToDonations();
+      
+      return;
+    } catch (e, stackTrace) {
+      _errorMessage = 'Failed to refresh data: $e';
+      log('Error in refresh', error: e, stackTrace: stackTrace);
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+}

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pmj_application/assets/custom%20widgets/transition.dart';
 import 'package:pmj_application/primary/login.dart';
 import 'package:pmj_application/secondary/user_service.dart';
+import 'package:pmj_application/services/local_database_service.dart';
 
 Future<bool> showLogoutConfirmation(BuildContext context) async {
   return await showDialog<bool>(
@@ -13,7 +14,7 @@ Future<bool> showLogoutConfirmation(BuildContext context) async {
           style: TextStyle(
             fontFamily: "Inter",
             fontWeight: FontWeight.w400,
-            fontSize: 12,
+            fontSize: 14,
           ),
         ),
         actions: <Widget>[
@@ -64,9 +65,8 @@ Future<bool> showLogoutConfirmation(BuildContext context) async {
                   fontSize: 9,
                 ),
               ),
-              onPressed: () {
-                _performLogout;
-                Navigator.of(dialogContext).pop(true);
+              onPressed: () async {
+                await _performLogout(dialogContext);
               },
             ),
           ),
@@ -76,19 +76,29 @@ Future<bool> showLogoutConfirmation(BuildContext context) async {
   ) ??
       false;
 }
-void _performLogout(BuildContext context) async {
+
+Future<void> _performLogout(BuildContext context) async {
   final userService = UserService();
   try {
+    // 1) Sign out from Firebase and clear login flag
     await userService.signOut();
-    print('Logout completed: Firebase signed out, preferences cleared');
+
+    // 2) Clear all local data (Isar DB + image cache)
+    await LocalDatabaseService().clearAllData();
+
+    // 3) Optionally clear Flutter's in-memory image cache
+    // ignore: invalid_use_of_visible_for_testing_member, invalid_use_of_protected_member
+    PaintingBinding.instance.imageCache.clear();
+
+    print('Logout completed: Firebase signed out, preferences cleared, local data cleared');
   } catch (e) {
     print('Error during logout: $e');
   }
 
   // Navigate to AuthScreens and remove all previous routes
-  Navigator.pushAndRemoveUntil(
-    context,
-    SlidingPageTransitionLR(page: AuthScreens()),
-        (Route<dynamic> route) => false, // Remove all routes
+  if (!context.mounted) return;
+  Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
+    '/login',
+    (Route<dynamic> route) => false,
   );
 }

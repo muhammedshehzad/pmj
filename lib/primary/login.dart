@@ -132,38 +132,11 @@ class _LoginForm extends StatelessWidget {
                     onPressed: loginProvider.isLoading
                         ? null
                         : () async {
-                      if (formKey.currentState!.validate()) {
-                        try {
-                          await loginProvider.login(context);
-                        } catch (e) {
-                          String errorMessage;
-                          // Assuming FirebaseAuthException for error handling
-                          if (e.toString().contains('wrong-password')) {
-                            errorMessage = 'Incorrect password. Please try again.';
-                          } else if (e.toString().contains('user-not-found')) {
-                            errorMessage = 'No account found with this email.';
-                          } else if (e.toString().contains('invalid-credential')) {
-                            errorMessage = 'Invalid email or password.';
-                          } else if (e.toString().contains('network-request-failed')) {
-                            errorMessage = 'Network error. Please check your connection.';
-                          } else if (e.toString().contains('too-many-requests')) {
-                            errorMessage = 'Too many attempts. Try again later.';
-                          } else if (e.toString().contains('user-disabled')) {
-                            errorMessage = 'This account has been disabled.';
-                          } else if (e.toString().contains('invalid-email')) {
-                            errorMessage = 'Invalid email format.';
-                          } else {
-                            errorMessage = 'An error occurred. Please try again.';
-                          }
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(errorMessage),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        }
-                      }
-                    },
+                            if (formKey.currentState!.validate()) {
+                              // All error handling, timeouts, and messaging are centralized in LoginProvider
+                              await loginProvider.login(context);
+                            }
+                          },
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [

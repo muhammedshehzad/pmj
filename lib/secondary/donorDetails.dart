@@ -1,38 +1,92 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:pmj_application/assets/custom%20widgets/transition.dart';
-import '../assets/custom widgets/deletepopup.dart';
-import '../assets/custom widgets/logoutpopup.dart';
-import 'editDonor.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/svg.dart';
+import 'package:pmj_application/models/donation_model.dart';
+import 'package:pmj_application/models/person_model.dart';
+import 'package:pmj_application/services/local_database_service.dart';
+import 'package:shimmer/shimmer.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:intl/intl.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:pdf/pdf.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:photo_view/photo_view.dart';
-import 'package:hive/hive.dart';
+import '../services/image_cache_service.dart';
+import '../assets/custom%20widgets/shimmer_widgets.dart';
+import 'dart:io';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../models/person_model.dart';
+import '../services/local_database_service.dart';
+import '../services/image_cache_service.dart';
+import 'donorAdd.dart';
+
+// Custom page route with slide transition from right to left
+class SlidingPageTransitionRL extends PageRouteBuilder {
+  final Widget page;
+
+  SlidingPageTransitionRL({required this.page})
+      : super(
+          transitionDuration: const Duration(milliseconds: 220),
+          reverseTransitionDuration: const Duration(milliseconds: 200),
+          pageBuilder: (context, animation, secondaryAnimation) => page,
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            const begin = Offset(0.06, 0.0); // shorter travel for snappier feel
+            const end = Offset.zero;
+            const curve = Curves.easeOutCubic;
+
+            final curved = CurvedAnimation(parent: animation, curve: curve);
+            final slide = Tween(begin: begin, end: end).animate(curved);
+            final fade = Tween<double>(begin: 0.0, end: 1.0).animate(curved);
+
+            return FadeTransition(
+              opacity: fade,
+              child: SlideTransition(
+                position: slide,
+                child: child,
+              ),
+            );
+          },
+        );
+}
 
 Future<Map<String, dynamic>> fetchDonorData(String donorId) async {
-  final donorDetailsBox = await Hive.openBox<Map>('donorDetailsBox');
-  // Try to get from cache first
-  final cached = donorDetailsBox.get(donorId);
-  if (cached != null) {
-    return Map<String, dynamic>.from(cached);
-  }
   try {
     DocumentSnapshot doc = await FirebaseFirestore.instance
         .collection('donors')
         .doc(donorId)
         .get();
     if (doc.exists) {
+      final raw = doc.data() as Map<String, dynamic>? ?? {};
+      final imageUrl = (raw['imageUrl']?.toString() ?? '').trim();
+      final photoUrl = (raw['photoUrl']?.toString() ?? '').trim();
       final data = {
-        'amount': (doc['amount'] as num?)?.toDouble() ?? 0.0,
+        'name': raw['name'] ?? 'Unknown',
+        'number': raw['number'] ?? 'No Number',
+        'address': raw['address'] ?? 'No Address',
+        'imageUrl': imageUrl.isNotEmpty ? imageUrl : photoUrl,
+        'amount': (raw['amount'] as num?)?.toDouble() ?? 0.0,
       };
-      // Cache in Hive
-      await donorDetailsBox.put(donorId, data);
       return data;
     }
-    return {'amount': 0.0};
+    return {
+      'name': 'Unknown',
+      'number': 'No Number',
+      'address': 'No Address',
+      'imageUrl': '',
+      'amount': 0.0,
+    };
   } catch (e) {
     print('Error fetching donor data: $e');
-    return {'amount': 0.0};
+    return {
+      'name': 'Unknown',
+      'number': 'No Number',
+      'address': 'No Address',
+      'imageUrl': '',
+      'amount': 0.0,
+    };
   }
 }
 
@@ -48,6 +102,81 @@ class donorDetails extends StatefulWidget {
 class _donorDetailsState extends State<donorDetails> {
   String? _selectedYear;
   late List<String> _years;
+  bool _isLoadingPDF = false;
+  final LocalDatabaseService _localDb = LocalDatabaseService();
+
+  // Show logout confirmation dialog
+  Future<void> showLogoutConfirmation(BuildContext context) async {
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Logout'),
+          content: const Text('Are you sure you want to logout?'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                await FirebaseAuth.instance.signOut();
+                if (mounted) {
+                  Navigator.of(context).pushNamedAndRemoveUntil(
+                    '/login',
+                    (route) => false,
+                  );
+                }
+              },
+              child: const Text('Logout'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Create a custom page route with slide transition
+  static Route _createRoute(Widget page) {
+    return PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) => page,
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        const begin = Offset(1.0, 0.0);
+        const end = Offset.zero;
+        const curve = Curves.easeInOut;
+
+        var tween = Tween(begin: begin, end: end).chain(
+          CurveTween(curve: curve),
+        );
+
+        return SlideTransition(
+          position: animation.drive(tween),
+          child: child,
+        );
+      },
+    );
+  }
+
+  // Navigate to edit donor screen
+  void _navigateToEditDonor() async {
+    final donorData = await fetchDonorData(widget.donorId);
+
+    final result = await Navigator.of(context).push(
+      SlidingPageTransitionRL(
+          page: DonorAdd(
+        donorId: widget.donorId,
+        initialName: donorData['name'],
+        initialNumber: donorData['number'],
+        initialAddress: donorData['address'],
+        initialAmount: donorData['amount'].toString(),
+        initialImageUrl: donorData['imageUrl'],
+      )),
+    );
+
+    if (result == true && mounted) {
+      setState(() {}); // Trigger rebuild to refresh FutureBuilder
+    }
+  }
 
   @override
   void initState() {
@@ -55,6 +184,349 @@ class _donorDetailsState extends State<donorDetails> {
     final currentYear = DateTime.now().year;
     _years = List.generate(5, (index) => (currentYear - index).toString());
     _selectedYear = currentYear.toString(); // Default to current year
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchYearlyPayments() async {
+    final year = _selectedYear ?? DateTime.now().year.toString();
+    final currentYear = DateTime.now().year.toString();
+    final currentMonth = DateTime.now().month;
+    final months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    // Only show up to current month if current year, else all months
+    final monthsToShow =
+        months.sublist(0, year == currentYear ? currentMonth : 12);
+    final snapshot = await FirebaseFirestore.instance
+        .collection('donors')
+        .doc(widget.donorId)
+        .collection('paymentStatus')
+        .where('year', isEqualTo: year)
+        .get();
+    final paymentMap = <String, Map<String, dynamic>>{};
+    for (var doc in snapshot.docs) {
+      final data = doc.data();
+      final month = data['month'] as String?;
+      if (month != null && monthsToShow.contains(month)) {
+        paymentMap[month] = data;
+      }
+    }
+    // Fill only monthsToShow
+    return monthsToShow.map((month) {
+      return paymentMap[month] ??
+          {
+            'month': month,
+            'year': year,
+            'status': 'unpaid',
+            'amount': null,
+            'paymentMethod': null,
+          };
+    }).toList();
+  }
+
+  Future<void> _generateAndDownloadPDF() async {
+    setState(() => _isLoadingPDF = true);
+    // Show modal loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          padding: const EdgeInsets.all(24.0),
+          constraints: const BoxConstraints(maxWidth: 300),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xff1BA3A1)),
+                strokeWidth: 3,
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Generating PDF...',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[800],
+                  fontFamily: 'Inter',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Please wait while we prepare your document',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                  fontFamily: 'Inter',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    try {
+      final payments = await _fetchYearlyPayments();
+      final donorData = await fetchDonorData(widget.donorId);
+      final pdf = pw.Document();
+      final dateFormat = DateFormat('dd MMMM yyyy');
+      final currentDate = dateFormat.format(DateTime.now());
+      final year = _selectedYear ?? DateTime.now().year.toString();
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(24),
+          header: (pw.Context context) {
+            return pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 10),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(
+                            'DONATION REPORT',
+                            style: pw.TextStyle(
+                              fontSize: 20,
+                              fontWeight: pw.FontWeight.bold,
+                              color: PdfColors.teal,
+                            ),
+                          ),
+                          pw.Text(
+                            '${donorData['name'] ?? 'Donor'}',
+                            style: pw.TextStyle(
+                              fontSize: 14,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
+                          ),
+                          pw.Text(
+                            'Year $year',
+                            style: pw.TextStyle(
+                              fontSize: 12,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      pw.Text(
+                        'Generated: $currentDate',
+                        style: const pw.TextStyle(
+                          fontSize: 10,
+                          color: PdfColors.grey700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  pw.SizedBox(height: 5),
+                  pw.Divider(color: PdfColors.teal, thickness: 1),
+                ],
+              ),
+            );
+          },
+          footer: (pw.Context context) {
+            return pw.Container(
+              margin: const pw.EdgeInsets.only(top: 10),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text(
+                    'PMJ App - Donor Yearly Report',
+                    style: const pw.TextStyle(
+                      fontSize: 8,
+                      color: PdfColors.grey700,
+                    ),
+                  ),
+                  pw.Text(
+                    'Page  {context.pageNumber} of  {context.pagesCount}',
+                    style: const pw.TextStyle(
+                      fontSize: 8,
+                      color: PdfColors.grey700,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+          build: (pw.Context context) {
+            return [
+              pw.Text(
+                'Donation Details',
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.teal,
+                ),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Table(
+                border: pw.TableBorder.all(color: PdfColors.grey400),
+                columnWidths: {
+                  0: const pw.FixedColumnWidth(60), // Month
+                  1: const pw.FixedColumnWidth(60), // Status
+                  2: const pw.FixedColumnWidth(60), // Amount
+                  3: const pw.FixedColumnWidth(80), // Payment Method
+                },
+                defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+                children: [
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(color: PdfColors.teal),
+                    children: [
+                      pw.Container(
+                        padding: const pw.EdgeInsets.all(6),
+                        alignment: pw.Alignment.center,
+                        child: pw.Text(
+                          'Month',
+                          style: pw.TextStyle(
+                            color: PdfColors.white,
+                            fontWeight: pw.FontWeight.bold,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ),
+                      pw.Container(
+                        padding: const pw.EdgeInsets.all(6),
+                        alignment: pw.Alignment.center,
+                        child: pw.Text(
+                          'Status',
+                          style: pw.TextStyle(
+                            color: PdfColors.white,
+                            fontWeight: pw.FontWeight.bold,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ),
+                      pw.Container(
+                        padding: const pw.EdgeInsets.all(6),
+                        alignment: pw.Alignment.center,
+                        child: pw.Text(
+                          'Amount',
+                          style: pw.TextStyle(
+                            color: PdfColors.white,
+                            fontWeight: pw.FontWeight.bold,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ),
+                      pw.Container(
+                        padding: const pw.EdgeInsets.all(6),
+                        alignment: pw.Alignment.center,
+                        child: pw.Text(
+                          'Method',
+                          style: pw.TextStyle(
+                            color: PdfColors.white,
+                            fontWeight: pw.FontWeight.bold,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  ...payments.map((payment) {
+                    final month = payment['month'] ?? '';
+                    final status = payment['status'] ?? 'unpaid';
+                    final amount = payment['amount'] != null
+                        ? payment['amount'].toString()
+                        : '-';
+                    final method = payment['paymentMethod'] ?? '-';
+                    return pw.TableRow(
+                      children: [
+                        pw.Container(
+                          padding: const pw.EdgeInsets.all(6),
+                          alignment: pw.Alignment.center,
+                          child: pw.Text(month,
+                              style: const pw.TextStyle(fontSize: 9)),
+                        ),
+                        pw.Container(
+                          padding: const pw.EdgeInsets.all(6),
+                          alignment: pw.Alignment.center,
+                          child: pw.Text(
+                            status == 'paid' ? 'Paid' : 'Unpaid',
+                            style: pw.TextStyle(
+                              fontSize: 9,
+                              color: status == 'paid'
+                                  ? PdfColors.green
+                                  : PdfColors.red,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        pw.Container(
+                          padding: const pw.EdgeInsets.all(6),
+                          alignment: pw.Alignment.center,
+                          child: pw.Text(amount,
+                              style: const pw.TextStyle(fontSize: 9)),
+                        ),
+                        pw.Container(
+                          padding: const pw.EdgeInsets.all(6),
+                          alignment: pw.Alignment.center,
+                          child: pw.Text(method,
+                              style: const pw.TextStyle(fontSize: 9)),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ],
+              ),
+              pw.SizedBox(height: 20),
+              pw.Container(
+                padding: const pw.EdgeInsets.all(10),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.grey400),
+                  borderRadius:
+                      const pw.BorderRadius.all(pw.Radius.circular(4)),
+                ),
+                child: pw.Text(
+                  'This is an auto-generated report for yearly donations. For any queries, contact support.',
+                  style: const pw.TextStyle(fontSize: 9),
+                ),
+              ),
+            ];
+          },
+        ),
+      );
+      final directory = await getTemporaryDirectory();
+      final file = File(
+          '${directory.path}/donation_report_${donorData['name']}_${year}.pdf');
+      await file.writeAsBytes(await pdf.save());
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'Donation Report for ${donorData['name']} - $year',
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('PDF generated and shared successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to generate PDF: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() => _isLoadingPDF = false);
+      Navigator.of(context, rootNavigator: true)
+          .pop(); // Dismiss loading dialog
+    }
   }
 
   Future<void> _deleteDonor() async {
@@ -89,6 +561,72 @@ class _donorDetailsState extends State<donorDetails> {
     }
   }
 
+  Future<void> _makePhoneCall(String phoneNumber) async {
+    // Clean the phone number (remove spaces, dashes, etc.)
+    final cleanNumber = phoneNumber.replaceAll(RegExp(r'[^0-9+]'), '');
+    
+    // Use DIAL action instead of CALL to avoid permission issues
+    final Uri phoneUri = Uri(scheme: 'tel', path: cleanNumber);
+    
+    try {
+      if (await canLaunchUrl(phoneUri)) {
+        await launchUrl(phoneUri, mode: LaunchMode.externalApplication);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not launch phone dialer'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error launching phone dialer: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _openWhatsApp(String phoneNumber) async {
+    // Clean the phone number and ensure it starts with country code
+    String cleanNumber = phoneNumber.replaceAll(RegExp(r'[^0-9+]'), '');
+    
+    // If number doesn't start with +, assume it's Indian number and add +91
+    if (!cleanNumber.startsWith('+')) {
+      if (cleanNumber.startsWith('91')) {
+        cleanNumber = '+$cleanNumber';
+      } else {
+        cleanNumber = '+91$cleanNumber';
+      }
+    }
+    
+    // Remove the + for WhatsApp URL format
+    final whatsappNumber = cleanNumber.replaceFirst('+', '');
+    final Uri whatsappUri = Uri.parse('https://wa.me/$whatsappNumber');
+    
+    try {
+      if (await canLaunchUrl(whatsappUri)) {
+        await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('WhatsApp is not installed or could not be opened'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error opening WhatsApp: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   void _handleDeleteConfirmation(BuildContext context) {
     showDialog(
       context: context,
@@ -101,22 +639,20 @@ class _donorDetailsState extends State<donorDetails> {
           ),
           actions: <Widget>[
             Container(
-              height: 26,
-              width: 72,
+              height: 30,
+              width: 70,
               margin: EdgeInsets.only(right: 4, bottom: 4),
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                     foregroundColor: Colors.white,
-                    backgroundColor: Color(0xff29B6F6),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4)),
+                    backgroundColor: Color(0xffF44336),
                     elevation: 0),
                 child: Text(
                   'Cancel',
                   style: TextStyle(
                       fontFamily: "Inter",
-                      fontWeight: FontWeight.w600,
-                      fontSize: 7),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 9),
                 ),
                 onPressed: () {
                   Navigator.of(context).pop();
@@ -124,22 +660,20 @@ class _donorDetailsState extends State<donorDetails> {
               ),
             ),
             Container(
-              height: 26,
-              width: 72,
+              height: 30,
+              width: 70,
               margin: EdgeInsets.only(right: 0, bottom: 4),
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                     foregroundColor: Colors.white,
                     backgroundColor: Color(0xffF44336),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4)),
                     elevation: 0),
                 child: Text(
                   'Delete',
                   style: TextStyle(
                       fontFamily: "Inter",
-                      fontWeight: FontWeight.w600,
-                      fontSize: 7),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 9),
                 ),
                 onPressed: () async {
                   Navigator.of(context).pop();
@@ -178,28 +712,28 @@ class _donorDetailsState extends State<donorDetails> {
                       height: 50,
                     ),
                   ),
-                  Container(
-                    height: 26,
-                    width: 84,
-                    child: ElevatedButton(
-                      onPressed: () => showLogoutConfirmation(context),
-                      style: ElevatedButton.styleFrom(
-                          foregroundColor: Colors.black,
-                          backgroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(2)),
-                          elevation: 0),
-                      child: Center(
-                        child: Text(
-                          'Logout',
-                          style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              fontFamily: "Inter"),
-                        ),
-                      ),
-                    ),
-                  ),
+                  // Container(
+                  //   height: 26,
+                  //   width: 84,
+                  //   child: ElevatedButton(
+                  //     onPressed: () => showLogoutConfirmation(context),
+                  //     style: ElevatedButton.styleFrom(
+                  //         foregroundColor: Colors.black,
+                  //         backgroundColor: Colors.white,
+                  //         shape: RoundedRectangleBorder(
+                  //             borderRadius: BorderRadius.circular(2)),
+                  //         elevation: 0),
+                  //     child: Center(
+                  //       child: Text(
+                  //         'Logout',
+                  //         style: TextStyle(
+                  //             fontSize: 10,
+                  //             fontWeight: FontWeight.w600,
+                  //             fontFamily: "Inter"),
+                  //       ),
+                  //     ),
+                  //   ),
+                  // ),
                 ],
               ),
             ),
@@ -210,7 +744,7 @@ class _donorDetailsState extends State<donorDetails> {
         future: fetchDonorData(widget.donorId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator());
+            return DonorDetailsShimmer();
           }
           if (snapshot.hasError || !snapshot.hasData) {
             return Center(child: Text('Error loading donor details'));
@@ -241,10 +775,181 @@ class _donorDetailsState extends State<donorDetails> {
                             fontWeight: FontWeight.w600, fontSize: 16),
                       ),
                     ),
-                    trailing: SvgPicture.asset(
-                        'lib/assets/images/settingsnew.svg',
-                        height: 40,
-                        width: 40),
+                    trailing: PopupMenuButton<String>(
+                      icon: SvgPicture.asset(
+                          'lib/assets/images/settingsnew.svg',
+                          height: 40,
+                          width: 40),
+                      onSelected: (value) async {
+                        if (value == 'download_pdf') {
+                          await _generateAndDownloadPDF();
+                        } else if (value == 'call') {
+                          await _makePhoneCall(donorNumber);
+                        } else if (value == 'whatsapp') {
+                          await _openWhatsApp(donorNumber);
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        PopupMenuItem<String>(
+                          value: 'call',
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0x1F4CAF50), // green tint
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Icon(
+                                    Icons.phone,
+                                    color: Color(0xff4CAF50),
+                                    size: 18,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Call Donor',
+                                        style: TextStyle(
+                                          fontFamily: 'Inter',
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      SizedBox(height: 2),
+                                      Text(
+                                        'Make a phone call',
+                                        style: TextStyle(
+                                          fontFamily: 'Inter',
+                                          fontSize: 11,
+                                          color: Color(0xff817D8A),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        PopupMenuItem<String>(
+                          value: 'whatsapp',
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0x1F25D366), // WhatsApp green tint
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Icon(
+                                    Icons.chat,
+                                    color: Color(0xff25D366),
+                                    size: 18,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'WhatsApp',
+                                        style: TextStyle(
+                                          fontFamily: 'Inter',
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      SizedBox(height: 2),
+                                      Text(
+                                        'Send a message',
+                                        style: TextStyle(
+                                          fontFamily: 'Inter',
+                                          fontSize: 11,
+                                          color: Color(0xff817D8A),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        PopupMenuItem<String>(
+                          value: 'download_pdf',
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0x1F1BA3A1), // teal tint
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Icon(
+                                    Icons.picture_as_pdf,
+                                    color: Color(0xff1BA3A1),
+                                    size: 18,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Text(
+                                        'Download Yearly PDF',
+                                        style: TextStyle(
+                                          fontFamily: 'Inter',
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      SizedBox(height: 2),
+                                      Text(
+                                        'Share or save the report',
+                                        style: TextStyle(
+                                          fontFamily: 'Inter',
+                                          fontSize: 11,
+                                          color: Color(0xff817D8A),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (_isLoadingPDF) const SizedBox(width: 8),
+                                if (_isLoadingPDF)
+                                  const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   Container(
                     height: 160,
@@ -265,26 +970,113 @@ class _donorDetailsState extends State<donorDetails> {
                                     )));
                               }
                             },
-                            child: CircleAvatar(
-                              radius: 50,
-                              backgroundImage: donorImageUrl.isNotEmpty
-                                  ? NetworkImage(donorImageUrl)
-                                  : null,
-                              backgroundColor: donorImageUrl.isNotEmpty
-                                  ? null
-                                  : Color(0xff1BA3A1),
-                              child: donorImageUrl.isEmpty
-                                  ? Text(
-                                      donorName.isNotEmpty
-                                          ? donorName[0].toUpperCase()
-                                          : '',
-                                      style: const TextStyle(
-                                        fontSize: 32,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : null,
+                            child: Hero(
+                              tag: 'donor_avatar_${widget.donorId}',
+                              child: SizedBox(
+                                width: 100,
+                                height: 100,
+                                child: ClipOval(
+                                  child: Builder(
+                                    builder: (context) {
+                                      if (donorImageUrl.isEmpty) {
+                                        return Container(
+                                          color: const Color(0xff1BA3A1),
+                                          child: Center(
+                                            child: Text(
+                                              donorName.isNotEmpty
+                                                  ? donorName[0].toUpperCase()
+                                                  : '',
+                                              style: const TextStyle(
+                                                fontSize: 32,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      }
+
+                                      return FutureBuilder<ImageProvider?>(
+                                        future: ImageCacheService()
+                                            .getImageProvider(donorImageUrl),
+                                        builder: (context, snapshot) {
+                                          if (snapshot.connectionState ==
+                                              ConnectionState.waiting) {
+                                            return Shimmer.fromColors(
+                                              baseColor:
+                                                  const Color(0xFFE0E0E0),
+                                              highlightColor:
+                                                  const Color(0xFFF5F5F5),
+                                              child: Container(
+                                                  color: Colors.white),
+                                            );
+                                          }
+
+                                          if (snapshot.hasData &&
+                                              snapshot.data != null) {
+                                            return Image(
+                                              image: snapshot.data!,
+                                              fit: BoxFit.cover,
+                                              frameBuilder: (context,
+                                                  child,
+                                                  frame,
+                                                  wasSynchronouslyLoaded) {
+                                                if (wasSynchronouslyLoaded)
+                                                  return child;
+                                                return AnimatedOpacity(
+                                                  opacity:
+                                                      frame == null ? 0 : 1,
+                                                  duration: const Duration(
+                                                      milliseconds: 300),
+                                                  curve: Curves.easeInOut,
+                                                  child: child,
+                                                );
+                                              },
+                                              errorBuilder:
+                                                  (context, error, stackTrace) {
+                                                return Container(
+                                                  color:
+                                                      const Color(0xff1BA3A1),
+                                                  child: Center(
+                                                    child: Text(
+                                                      donorName.isNotEmpty
+                                                          ? donorName[0]
+                                                              .toUpperCase()
+                                                          : '',
+                                                      style: const TextStyle(
+                                                        fontSize: 32,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color: Colors.white,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                );
+                                              },
+                                            );
+                                          }
+
+                                          return Container(
+                                            color: const Color(0xff1BA3A1),
+                                            child: Center(
+                                              child: Text(
+                                                donorName.isNotEmpty
+                                                    ? donorName[0].toUpperCase()
+                                                    : '',
+                                                style: const TextStyle(
+                                                  fontSize: 32,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -321,7 +1113,6 @@ class _donorDetailsState extends State<donorDetails> {
                           right: 22,
                           top: 42,
                           child: Container(
-                            // height: 80,
                             width: 212,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -375,13 +1166,7 @@ class _donorDetailsState extends State<donorDetails> {
                                     ),
                                   ),
                                   onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      SlidingPageTransitionRL(
-                                        page:
-                                            EditDonor(donorId: widget.donorId),
-                                      ),
-                                    );
+                                    _navigateToEditDonor();
                                   },
                                 ),
                               ),
@@ -471,7 +1256,7 @@ class _donorDetailsState extends State<donorDetails> {
                             dropdownColor: Colors.white,
                             elevation: 0,
                           ),
-                        )
+                        ),
                       ],
                     ),
                   ),
@@ -774,6 +1559,75 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
         ),
       );
     }
+  }
+
+  // Show logout confirmation dialog
+  Future<void> showLogoutConfirmation(BuildContext context) async {
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Confirm Logout'),
+          content: const Text('Are you sure you want to logout?'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                await FirebaseAuth.instance.signOut();
+                if (!mounted) return;
+                Navigator.of(context).pushNamedAndRemoveUntil(
+                  '/login',
+                  (Route<dynamic> route) => false,
+                );
+              },
+              child: const Text('Logout'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Custom page transition
+  Route _createRoute(Widget page) {
+    return PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) => page,
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        const begin = Offset(1.0, 0.0);
+        const end = Offset.zero;
+        const curve = Curves.easeInOut;
+
+        var tween =
+            Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+        var offsetAnimation = animation.drive(tween);
+
+        return SlideTransition(
+          position: offsetAnimation,
+          child: child,
+        );
+      },
+    );
+  }
+
+  // Navigate to edit donor page
+  void _navigateToEditDonor() async {
+    final donorData = await fetchDonorData(widget.donorId);
+
+    Navigator.of(context).push(
+      _createRoute(
+        DonorAdd(
+          donorId: widget.donorId,
+          initialName: donorData['name'],
+          initialNumber: donorData['number'],
+          initialAddress: donorData['address'],
+          initialAmount: (donorData['amount'] ?? '').toString(),
+          initialImageUrl: donorData['imageUrl'],
+        ),
+      ),
+    );
   }
 
   @override
@@ -1198,6 +2052,142 @@ class FullScreenImageViewer extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class DonorDetailsShimmer extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      child: Column(
+        children: [
+          SizedBox(height: 16),
+          // Top bar shimmer
+          ListTile(
+            leading: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+            title: Center(
+              child: Container(
+                width: 80,
+                height: 18,
+                color: Colors.white,
+              ),
+            ),
+            trailing: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ),
+          SizedBox(height: 8),
+          // Avatar and details shimmer
+          Container(
+            height: 160,
+            width: MediaQuery.of(context).size.width,
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 20,
+                  top: 20,
+                  child: Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 17,
+                  right: 20,
+                  child: Container(
+                    width: 212,
+                    height: 30,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          width: 100,
+                          height: 18,
+                          color: Colors.white,
+                        ),
+                        Container(
+                          width: 60,
+                          height: 18,
+                          color: Colors.white,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 22,
+                  top: 42,
+                  child: Container(
+                    width: 212,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 120,
+                          height: 14,
+                          color: Colors.white,
+                        ),
+                        SizedBox(height: 8),
+                        Container(
+                          width: 180,
+                          height: 14,
+                          color: Colors.white,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 22,
+                  bottom: 0,
+                  child: Row(
+                    children: [
+                      Container(
+                        height: 26,
+                        width: 102,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      SizedBox(width: 3),
+                      Container(
+                        height: 26,
+                        width: 102,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: 24),
+          // Add more shimmer sections as needed for the rest of the page
+        ],
       ),
     );
   }

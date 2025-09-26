@@ -12,7 +12,22 @@ import 'package:http/http.dart' as http; // For Cloudinary upload
 import 'dart:convert'; // For JSON decoding
 
 class DonorAdd extends StatefulWidget {
-  const DonorAdd({super.key});
+  final String? donorId;
+  final String? initialName;
+  final String? initialNumber;
+  final String? initialAddress;
+  final String? initialAmount;
+  final String? initialImageUrl;
+  
+  const DonorAdd({
+    super.key,
+    this.donorId,
+    this.initialName,
+    this.initialNumber,
+    this.initialAddress,
+    this.initialAmount,
+    this.initialImageUrl,
+  });
 
   @override
   State<DonorAdd> createState() => _DonorAddState();
@@ -24,8 +39,26 @@ class _DonorAddState extends State<DonorAdd> {
   TextEditingController address = TextEditingController();
   TextEditingController amount = TextEditingController();
   File? _image;
+  String? _existingImageUrl;
   final ImagePicker _picker = ImagePicker();
   bool _isLoading = false; // Loading state for blur overlay
+  bool get _isEditing => widget.donorId != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeFields();
+  }
+
+  void _initializeFields() {
+    if (_isEditing) {
+      name.text = widget.initialName ?? '';
+      number.text = widget.initialNumber ?? '';
+      address.text = widget.initialAddress ?? '';
+      amount.text = widget.initialAmount ?? '';
+      _existingImageUrl = widget.initialImageUrl;
+    }
+  }
 
   Future<void> _pickImage(ImageSource source) async {
     final pickedFile = await _picker.pickImage(source: source);
@@ -65,48 +98,70 @@ class _DonorAddState extends State<DonorAdd> {
     }
   }
 
-  // Function to add donor data to Firestore
-  Future<void> _addDonor() async {
+  // Function to add or update donor data in Firestore
+  Future<void> _saveDonor() async {
     setState(() => _isLoading = true);
     try {
-      String? imageUrl;
+      String? imageUrl = _existingImageUrl; // Keep existing image by default
+      
+      // Only upload new image if one was selected
       if (_image != null) {
         imageUrl = await _uploadImageToCloudinary(_image!);
         if (imageUrl == null) throw Exception('Image upload failed');
       }
 
-      DocumentReference donorRef = await FirebaseFirestore.instance
-          .collection('donors')
-          .add({
+      final donorData = {
         'name': name.text,
         'number': number.text,
         'address': address.text,
         'amount': double.parse(amount.text),
         'imageUrl': imageUrl ?? '',
-        'timestamp': FieldValue.serverTimestamp(),
-      });
+      };
 
-      // Initialize paymentStatus for current year's months
-      final now = DateTime.now();
-      final currentYear = now.year;
-      final currentMonth = now.month;
-      Map<String, String> paymentStatus = {};
+      if (_isEditing) {
+        // Update existing donor
+        await FirebaseFirestore.instance
+            .collection('donors')
+            .doc(widget.donorId)
+            .update({
+          ...donorData,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
 
-      for (int month = 1; month <= currentMonth; month++) {
-        final date = DateTime(currentYear, month, 1);
-        final monthName = DateFormat('MMMM').format(date);
-        paymentStatus['$monthName-$currentYear'] = 'unpaid';
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Donor updated successfully')),
+        );
+      } else {
+        // Add new donor
+        DocumentReference donorRef = await FirebaseFirestore.instance
+            .collection('donors')
+            .add({
+          ...donorData,
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+
+        // Initialize paymentStatus for current year's months
+        final now = DateTime.now();
+        final currentYear = now.year;
+        final currentMonth = now.month;
+        Map<String, String> paymentStatus = {};
+
+        for (int month = 1; month <= currentMonth; month++) {
+          final date = DateTime(currentYear, month, 1);
+          final monthName = DateFormat('MMMM').format(date);
+          paymentStatus['$monthName-$currentYear'] = 'unpaid';
+        }
+
+        await donorRef.update({'paymentStatus': paymentStatus});
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Donor added successfully')),
+        );
       }
-
-      await donorRef.update({'paymentStatus': paymentStatus});
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Donor added successfully')),
-      );
 
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to add donor: $e')),
+        SnackBar(content: Text(_isEditing ? 'Failed to update donor: $e' : 'Failed to add donor: $e')),
       );
     } finally {
       setState(() => _isLoading = false);
@@ -129,16 +184,22 @@ class _DonorAddState extends State<DonorAdd> {
         const SnackBar(content: Text('All fields must be filled!')),
       );
     } else {
-      await _addDonor(); // Save to Firebase
-      showAddedConfirmation(context); // Show confirmation popup
-      // Clear fields after submission
-      name.clear();
-      number.clear();
-      address.clear();
-      amount.clear();
-      setState(() {
-        _image = null;
-      });
+      await _saveDonor(); // Save to Firebase
+      
+      if (_isEditing) {
+        // Navigate back to donor details after editing
+        Navigator.pop(context, true);
+      } else {
+        showAddedConfirmation(context); // Show confirmation popup
+        // Clear fields after submission
+        name.clear();
+        number.clear();
+        address.clear();
+        amount.clear();
+        setState(() {
+          _image = null;
+        });
+      }
     }
   }
 
@@ -171,29 +232,29 @@ class _DonorAddState extends State<DonorAdd> {
                               height: 50,
                             ),
                           ),
-                          SizedBox(
-                            height: 26,
-                            width: 84,
-                            child: ElevatedButton(
-                              onPressed: () => showLogoutConfirmation(context),
-                              style: ElevatedButton.styleFrom(
-                                foregroundColor: Colors.black,
-                                backgroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(2)),
-                                elevation: 0,
-                              ),
-                              child: const Center(
-                                child: Text(
-                                  'Logout',
-                                  style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                      fontFamily: "Inter"),
-                                ),
-                              ),
-                            ),
-                          ),
+                          // SizedBox(
+                          //   height: 26,
+                          //   width: 84,
+                          //   child: ElevatedButton(
+                          //     onPressed: () => showLogoutConfirmation(context),
+                          //     style: ElevatedButton.styleFrom(
+                          //       foregroundColor: Colors.black,
+                          //       backgroundColor: Colors.white,
+                          //       shape: RoundedRectangleBorder(
+                          //           borderRadius: BorderRadius.circular(2)),
+                          //       elevation: 0,
+                          //     ),
+                          //     child: const Center(
+                          //       child: Text(
+                          //         'Logout',
+                          //         style: TextStyle(
+                          //             fontSize: 10,
+                          //             fontWeight: FontWeight.w600,
+                          //             fontFamily: "Inter"),
+                          //       ),
+                          //     ),
+                          //   ),
+                          // ),
                         ],
                       ),
                     ),
@@ -215,10 +276,10 @@ class _DonorAddState extends State<DonorAdd> {
                             width: 40,
                           ),
                         ),
-                        title: const Center(
+                        title: Center(
                           child: Text(
-                            'Add New Donor',
-                            style: TextStyle(
+                            _isEditing ? 'Edit Donor' : 'Add New Donor',
+                            style: const TextStyle(
                                 fontWeight: FontWeight.w600, fontSize: 16),
                           ),
                         ),
@@ -234,11 +295,13 @@ class _DonorAddState extends State<DonorAdd> {
                           onTap: () => _pickImage(ImageSource.gallery),
                           child: CircleAvatar(
                             radius: 84,
-                            backgroundImage:
-                            _image != null ? FileImage(_image!) : null,
-                            child: _image == null
-                                ? SvgPicture.asset(
-                                'lib/assets/images/Add Image.svg')
+                            backgroundImage: _image != null 
+                                ? FileImage(_image!) 
+                                : (_existingImageUrl != null && _existingImageUrl!.isNotEmpty)
+                                    ? NetworkImage(_existingImageUrl!)
+                                    : null,
+                            child: (_image == null && (_existingImageUrl == null || _existingImageUrl!.isEmpty))
+                                ? SvgPicture.asset('lib/assets/images/Add Image.svg')
                                 : null,
                           ),
                         ),
@@ -375,9 +438,9 @@ class _DonorAddState extends State<DonorAdd> {
                             onPressed: _isLoading
                                 ? null
                                 : () => _validateAndSubmit(context),
-                            child: const Text(
-                              'Add Donor',
-                              style: TextStyle(
+                            child: Text(
+                              _isEditing ? 'Update Donor' : 'Add Donor',
+                              style: const TextStyle(
                                 fontWeight: FontWeight.w600,
                                 fontSize: 14,
                               ),

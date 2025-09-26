@@ -6,6 +6,7 @@ buildscript {
     dependencies {
         // Add the classpath for the Google services Gradle plugin here
         classpath("com.google.gms:google-services:4.4.2")
+        classpath 'com.android.tools.build:gradle:8.6.0'
     }
 
 }
@@ -26,6 +27,20 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
+}
+
+// Workaround: enforce namespace for third-party Android library modules missing it (AGP 8+ requirement)
+subprojects { subproject ->
+    subproject.plugins.withId("com.android.library") {
+        if (subproject.name == "isar_flutter_libs") {
+            if (!subproject.hasProperty('android')) return
+            def ext = subproject.android
+            if (!ext.hasProperty('namespace') || ext.namespace == null || ext.namespace.toString().trim().isEmpty()) {
+                // Use a stable namespace for the isar_flutter_libs plugin
+                ext.namespace = "dev.isar.isar_flutter_libs"
+            }
+        }
+    }
 }
 
 tasks.register("clean", Delete) {

@@ -30,31 +30,31 @@ class GPay extends StatelessWidget {
                       height: 50,
                     ),
                   ),
-                  Container(
-                    height: 26,
-                    width: 84,
-                    child: ElevatedButton(
-                      onPressed: () => showLogoutConfirmation(context),
-                      style: ElevatedButton.styleFrom(
-                        foregroundColor: Colors.black,
-                        backgroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: const Center(
-                        child: Text(
-                          'Logout',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            fontFamily: "Inter",
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  // Container(
+                  //   height: 26,
+                  //   width: 84,
+                  //   child: ElevatedButton(
+                  //     onPressed: () => showLogoutConfirmation(context),
+                  //     style: ElevatedButton.styleFrom(
+                  //       foregroundColor: Colors.black,
+                  //       backgroundColor: Colors.white,
+                  //       shape: RoundedRectangleBorder(
+                  //         borderRadius: BorderRadius.circular(2),
+                  //       ),
+                  //       elevation: 0,
+                  //     ),
+                  //     child: const Center(
+                  //       child: Text(
+                  //         'Logout',
+                  //         style: TextStyle(
+                  //           fontSize: 10,
+                  //           fontWeight: FontWeight.w600,
+                  //           fontFamily: "Inter",
+                  //         ),
+                  //       ),
+                  //     ),
+                  //   ),
+                  // ),
                 ],
               ),
             ),
