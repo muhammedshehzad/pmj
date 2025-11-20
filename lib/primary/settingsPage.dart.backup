@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:pmj_application/assets/custom%20widgets/logoutpopup.dart';
@@ -12,15 +14,12 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:excel/excel.dart' as excel;
 import '../secondary/all_donations.dart';
-import '../secondary/donor_deletion_history_page.dart';
 import '../services/local_database_service.dart';
 import '../assets/custom%20widgets/shimmer_widgets.dart';
 import '../assets/custom widgets/GPay.dart';
 import '../assets/custom widgets/transition.dart';
-import '../screens/payment_links_screen.dart';
-import '../screens/upi_config_screen.dart';
-import 'package:hugeicons/hugeicons.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -62,26 +61,24 @@ class _SettingsPageState extends State<SettingsPage> {
                   onLoadingChanged: _setLoading,
                 ),
                 const SizedBox(height: 8),
-                InkWell(
+                GestureDetector(
                   onTap: () {
                     Navigator.push(
                       context,
                       SlidingPageTransitionRL(page: const NotificationsPage()),
                     );
                   },
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+                  child: Container(
+                    margin: const EdgeInsets.only(left: 2),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Row(
                           children: [
-                            const HugeIcon(
-                              icon: HugeIcons.strokeRoundedNotification03,
-                              size: 24,
-                              color: Color(0xff1BA3A1),
+                            SvgPicture.asset(
+                              'lib/assets/images/notification.svg',
+                              height: 32,
+                              width: 32,
                             ),
                             const SizedBox(width: 12),
                             const Text(
@@ -96,9 +93,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                         const Padding(
                           padding: EdgeInsets.only(left: 8.0),
-                          child: HugeIcon(
-                            icon: HugeIcons.strokeRoundedArrowRight01,
-                            color: Colors.black,
+                          child: Icon(
+                            Icons.arrow_forward_ios,
                             size: 16,
                           ),
                         ),
@@ -107,26 +103,24 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                InkWell(
+                GestureDetector(
                   onTap: () {
                     Navigator.push(
                       context,
                       SlidingPageTransitionRL(page: const GPay()),
                     );
                   },
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+                  child: Container(
+                    margin: const EdgeInsets.only(left: 2),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Row(
                           children: [
-                            const HugeIcon(
-                              icon: HugeIcons.strokeRoundedGoogleDoc,
-                              size: 24,
-                              color: Color(0xff1BA3A1),
+                            SvgPicture.asset(
+                              'lib/assets/images/scanner.svg',
+                              height: 32,
+                              width: 32,
                             ),
                             const SizedBox(width: 12),
                             const Text(
@@ -139,142 +133,15 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                           ],
                         ),
-                        const HugeIcon(
-                          icon: HugeIcons.strokeRoundedArrowRight01,
-                          color: Colors.black,
+                        const Icon(
+                          Icons.arrow_forward_ios,
                           size: 16,
                         ),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 14),
-                InkWell(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      SlidingPageTransitionRL(page: UpiConfigScreen()),
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            const HugeIcon(
-                              icon: HugeIcons.strokeRoundedSettings01,
-                              size: 24,
-                              color: Color(0xff1BA3A1),
-                            ),
-                            const SizedBox(width: 12),
-                            const Text(
-                              "UPI Configuration",
-                              style: TextStyle(
-                                fontWeight: FontWeight.w400,
-                                fontSize: 14,
-                                fontFamily: "Inter",
-                              ),
-                            ),
-                          ],
-                        ),
-                        const HugeIcon(
-                          icon: HugeIcons.strokeRoundedArrowRight01,
-                          color: Colors.black,
-                          size: 16,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                InkWell(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      SlidingPageTransitionRL(page: PaymentLinksScreen()),
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            const HugeIcon(
-                              icon: HugeIcons.strokeRoundedSent,
-                              size: 24,
-                              color: Color(0xff1BA3A1),
-                            ),
-                            const SizedBox(width: 12),
-                            const Text(
-                              "Monthly Payment Reminder",
-                              style: TextStyle(
-                                fontWeight: FontWeight.w400,
-                                fontSize: 14,
-                                fontFamily: "Inter",
-                              ),
-                            ),
-                          ],
-                        ),
-                        const HugeIcon(
-                          icon: HugeIcons.strokeRoundedArrowRight01,
-                          color: Colors.black,
-                          size: 16,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                InkWell(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      SlidingPageTransitionRL(page: DonorDeletionHistoryPage()),
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            const HugeIcon(
-                              icon: HugeIcons.strokeRoundedDelete04,
-                              size: 24,
-                              color: Color(0xff1BA3A1),
-                            ),
-                            const SizedBox(width: 12),
-                            const Text(
-                              "Donor Deletion History",
-                              style: TextStyle(
-                                fontWeight: FontWeight.w400,
-                                fontSize: 14,
-                                fontFamily: "Inter",
-                              ),
-                            ),
-                          ],
-                        ),
-                        const HugeIcon(
-                          icon: HugeIcons.strokeRoundedArrowRight01,
-                          color: Colors.black,
-                          size: 16,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 220),
+                const SizedBox(height: 250),
                 const Center(
                   child: Text(
                     'App version 2.01',
@@ -324,31 +191,6 @@ class NotificationsPage extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // Container(
-                  //   height: 26,
-                  //   width: 84,
-                  //   child: ElevatedButton(
-                  //     onPressed: () => showLogoutConfirmation(context),
-                  //     style: ElevatedButton.styleFrom(
-                  //       foregroundColor: Colors.black,
-                  //       backgroundColor: Colors.white,
-                  //       shape: RoundedRectangleBorder(
-                  //         borderRadius: BorderRadius.circular(2),
-                  //       ),
-                  //       elevation: 0,
-                  //     ),
-                  //     child: const Center(
-                  //       child: Text(
-                  //         'Logout',
-                  //         style: TextStyle(
-                  //           fontSize: 10,
-                  //           fontWeight: FontWeight.w600,
-                  //           fontFamily: "Inter",
-                  //         ),
-                  //       ),
-                  //     ),
-                  //   ),
-                  // ),
                 ],
               ),
             ),
@@ -538,430 +380,44 @@ class _ReportsSectionState extends State<ReportsSection> {
   }
 
   Future<List<Map<String, dynamic>>> _fetchPayments() async {
-    setState(() {
-      _isLoadingPreview = true;
-    });
-    widget.onLoadingChanged(true);
     try {
-      final List<Map<String, dynamic>> payments = [];
-      final donorSnapshot =
-          await FirebaseFirestore.instance.collection('donors').get();
+      Query query = FirebaseFirestore.instance.collection('payments');
 
-      List<Map<String, dynamic>> donorsToProcess = [];
+      if (useAdvancedFilters && useMonthRange) {
+        // Month range filter
+        final startMonthStr = months[startMonthIndex + 1];
+        final endMonthStr = months[endMonthIndex + 1];
+        final selectedMonths = months.sublist(startMonthIndex + 1, endMonthIndex + 2);
+        query = query.where('month', whereIn: selectedMonths);
+      } else if (selectedMonth != "Whole Year") {
+        query = query.where('month', isEqualTo: selectedMonth);
+      }
+
+      query = query.where('year', isEqualTo: int.parse(selectedYear));
+
       if (selectedPerson != 'All People') {
-        final matchingDocs = donorSnapshot.docs
-            .where((doc) => doc['name'] == selectedPerson)
-            .toList();
-        if (matchingDocs.isEmpty) return [];
-        donorsToProcess.add({
-          'id': matchingDocs.first.id,
-          'name': selectedPerson,
-        });
-      } else {
-        donorsToProcess = donorSnapshot.docs
-            .map((doc) => {
-                  'id': doc.id,
-                  'name': doc['name'] as String? ?? 'Unknown',
-                })
-            .toList();
+        query = query.where('name', isEqualTo: selectedPerson);
       }
 
-      for (var donor in donorsToProcess) {
-        Query<Map<String, dynamic>> query = FirebaseFirestore.instance
-            .collection('donors')
-            .doc(donor['id'])
-            .collection('paymentStatus')
-            .where('year', isEqualTo: selectedYear);
-
-        if (useAdvancedFilters && useMonthRange) {
-          query = FirebaseFirestore.instance
-              .collection('donors')
-              .doc(donor['id'])
-              .collection('paymentStatus')
-              .where('year', isEqualTo: selectedYear);
-        } else if (selectedMonth != "Whole Year") {
-          query = query.where('month', isEqualTo: months[selectedMonthIndex]);
-        }
-
-        final snapshot = await query.get();
-        for (var doc in snapshot.docs) {
-          final data = doc.data();
-          if (useAdvancedFilters && useMonthRange) {
-            int monthIndex = months.indexOf(data['month']) - 1;
-            if (monthIndex < 0) continue;
-            if (monthIndex < startMonthIndex || monthIndex > endMonthIndex) {
-              continue;
-            }
-          }
-
-          if (selectedFilter == "Payment received only" &&
-              data['status'] != 'paid') {
-            continue;
-          }
-          if (selectedFilter == "Payments to be received" &&
-              data['status'] != 'unpaid') {
-            continue;
-          }
-
-          payments.add({
-            'name': donor['name'],
-            'amount': data['amount'],
-            'paymentMethod': data['paymentMethod'],
-            'month': data['month'],
-            'year': data['year'],
-            'timestamp': data['timestamp'],
-            'status': data['status'],
-          });
-        }
-
-        if (useAdvancedFilters && useMonthRange) {
-          if (selectedFilter == "Payments to be received" ||
-              selectedFilter == "All payments") {
-            for (int i = startMonthIndex + 1; i <= endMonthIndex + 1; i++) {
-              if (i >= months.length) continue;
-              String month = months[i];
-              bool hasPaidOrUnpaid = snapshot.docs.any((doc) =>
-                  doc['month'] == month && doc['year'] == selectedYear);
-              if (!hasPaidOrUnpaid) {
-                payments.add({
-                  'name': donor['name'],
-                  'amount': null,
-                  'paymentMethod': null,
-                  'month': month,
-                  'year': selectedYear,
-                  'timestamp': null,
-                  'status': 'unpaid',
-                });
-              }
-            }
-          }
-        } else if (selectedMonth != "Whole Year") {
-          if (selectedFilter == "Payments to be received" ||
-              selectedFilter == "All payments") {
-            final currentMonth = months[selectedMonthIndex];
-            final hasAnyPayment = snapshot.docs.any((doc) =>
-                doc['month'] == currentMonth && doc['year'] == selectedYear);
-            if (!hasAnyPayment) {
-              payments.add({
-                'name': donor['name'],
-                'amount': null,
-                'paymentMethod': null,
-                'month': currentMonth,
-                'year': selectedYear,
-                'timestamp': null,
-                'status': 'unpaid',
-              });
-            }
-          }
-        } else if (selectedMonth == "Whole Year" &&
-            (selectedFilter == "Payments to be received" ||
-                selectedFilter == "All payments")) {
-          const monthsWithoutWhole = [
-            'January',
-            'February',
-            'March',
-            'April',
-            'May',
-            'June',
-            'July',
-            'August',
-            'September',
-            'October',
-            'November',
-            'December',
-          ];
-          final existingMonths =
-              snapshot.docs.map((doc) => doc['month'] as String?).toSet();
-          for (var month in monthsWithoutWhole) {
-            if (!existingMonths.contains(month)) {
-              payments.add({
-                'name': donor['name'],
-                'amount': null,
-                'paymentMethod': null,
-                'month': month,
-                'year': selectedYear,
-                'timestamp': null,
-                'status': 'unpaid',
-              });
-            }
-          }
-        }
+      if (selectedFilter == "Payment received only") {
+        query = query.where('status', isEqualTo: 'paid');
+      } else if (selectedFilter == "Payments to be received") {
+        query = query.where('status', isEqualTo: 'unpaid');
       }
 
-      return payments;
+      final querySnapshot = await query.get();
+
+      return querySnapshot.docs
+          .map((doc) => doc.data() as Map<String, dynamic>)
+          .toList();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error fetching payments: $e'),
+          content: Text('Failed to fetch payments: $e'),
           backgroundColor: Colors.red,
         ),
       );
       return [];
-    } finally {
-      setState(() {
-        _isLoadingPreview = false;
-      });
-      widget.onLoadingChanged(false);
-    }
-  }
-
-  Future<void> _generateAllPeoplePDF() async {
-    setState(() {
-      _isLoadingPDF = true;
-      widget.onLoadingChanged(true);
-    });
-    try {
-      final pdf = pw.Document();
-      final dateFormat = DateFormat('dd MMMM yyyy');
-      final currentDate = dateFormat.format(DateTime.now());
-
-      final donorSnapshot =
-          await FirebaseFirestore.instance.collection('donors').get();
-      final donors = donorSnapshot.docs
-          .map((doc) => {
-                'id': doc.id,
-                'name': doc['name'] as String? ?? 'Unknown',
-                'amount': (doc['amount'] as num?)?.toDouble() ?? 0.0,
-              })
-          .toList()
-        ..sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
-
-      pdf.addPage(
-        pw.MultiPage(
-          pageFormat: PdfPageFormat.a4.portrait,
-          margin: const pw.EdgeInsets.all(20),
-          header: (pw.Context context) {
-            return pw.Container(
-              margin: const pw.EdgeInsets.only(bottom: 10),
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Row(
-                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                    children: [
-                      pw.Column(
-                        crossAxisAlignment: pw.CrossAxisAlignment.start,
-                        children: [
-                          pw.Text(
-                            'DONOR MONTHLY OBLIGATIONS',
-                            style: pw.TextStyle(
-                              fontSize: 20,
-                              fontWeight: pw.FontWeight.bold,
-                              color: PdfColors.teal,
-                            ),
-                          ),
-                          pw.Text(
-                            'Year $selectedYear',
-                            style: pw.TextStyle(
-                              fontSize: 14,
-                              fontWeight: pw.FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      pw.Text(
-                        'Generated: $currentDate',
-                        style: const pw.TextStyle(
-                          fontSize: 10,
-                          color: PdfColors.grey700,
-                        ),
-                      ),
-                    ],
-                  ),
-                  pw.SizedBox(height: 5),
-                  pw.Divider(color: PdfColors.teal, thickness: 1),
-                ],
-              ),
-            );
-          },
-          footer: (pw.Context context) {
-            return pw.Container(
-              margin: const pw.EdgeInsets.only(top: 10),
-              child: pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text(
-                    'PMJ App - Donor Monthly Obligations',
-                    style: const pw.TextStyle(
-                      fontSize: 8,
-                      color: PdfColors.grey700,
-                    ),
-                  ),
-                  pw.Text(
-                    'Page ${context.pageNumber} of ${context.pagesCount}',
-                    style: const pw.TextStyle(
-                      fontSize: 8,
-                      color: PdfColors.grey700,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-          build: (pw.Context context) {
-            return [
-              pw.Text(
-                'Donor Monthly Obligations',
-                style: pw.TextStyle(
-                  fontSize: 14,
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.teal,
-                ),
-              ),
-              pw.SizedBox(height: 5),
-              pw.Table(
-                border: pw.TableBorder.all(color: PdfColors.grey400),
-                columnWidths: {
-                  0: const pw.FixedColumnWidth(50), // S.No.
-                  1: const pw.FlexColumnWidth(3), // Person
-                  2: const pw.FlexColumnWidth(2), // Monthly Amount
-                },
-                defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
-                children: [
-                  pw.TableRow(
-                    decoration: const pw.BoxDecoration(color: PdfColors.teal),
-                    children: [
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.all(3),
-                        child: pw.Center(
-                          child: pw.Text(
-                            'S.No.',
-                            style: pw.TextStyle(
-                              color: PdfColors.white,
-                              fontWeight: pw.FontWeight.bold,
-                              fontSize: 9,
-                            ),
-                          ),
-                        ),
-                      ),
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.all(3),
-                        child: pw.Center(
-                          child: pw.Text(
-                            'Person',
-                            style: pw.TextStyle(
-                              color: PdfColors.white,
-                              fontWeight: pw.FontWeight.bold,
-                              fontSize: 9,
-                            ),
-                          ),
-                        ),
-                      ),
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.all(3),
-                        child: pw.Center(
-                          child: pw.Text(
-                            'Monthly Amount',
-                            style: pw.TextStyle(
-                              color: PdfColors.white,
-                              fontWeight: pw.FontWeight.bold,
-                              fontSize: 9,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  ...donors.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final donor = entry.value;
-                    final name = donor['name'] ?? 'Unknown';
-                    final monthlyAmount = donor['amount']?.toString();
-                    return pw.TableRow(
-                      children: [
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(3),
-                          child: pw.Center(
-                            child: pw.Text(
-                              '${index + 1}',
-                              style: const pw.TextStyle(fontSize: 9),
-                              textAlign: pw.TextAlign.center,
-                            ),
-                          ),
-                        ),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.symmetric(
-                            horizontal: 4,
-                            vertical: 3,
-                          ),
-                          child: pw.Text(
-                            '$name',
-                            style: const pw.TextStyle(fontSize: 9),
-                          ),
-                        ),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(3),
-                          child: pw.Center(
-                            child: pw.Text(
-                              '$monthlyAmount',
-                              style: const pw.TextStyle(fontSize: 9),
-                              textAlign: pw.TextAlign.center,
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  }),
-                ],
-              ),
-              pw.SizedBox(height: 10),
-              pw.Container(
-                padding: const pw.EdgeInsets.all(8),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: PdfColors.grey400),
-                  borderRadius:
-                      const pw.BorderRadius.all(pw.Radius.circular(4)),
-                ),
-                child: pw.Row(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'Note: ',
-                      style: pw.TextStyle(
-                          fontWeight: pw.FontWeight.bold, fontSize: 9),
-                    ),
-                    pw.Expanded(
-                      child: pw.Text(
-                        'This report lists the fixed monthly payment obligations for all donors for $selectedYear.',
-                        style: pw.TextStyle(fontSize: 9),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ];
-          },
-        ),
-      );
-
-      final directory = await getTemporaryDirectory();
-      final file = File(
-          '${directory.path}/donor_monthly_obligations_${selectedYear}.pdf');
-      await file.writeAsBytes(await pdf.save());
-
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: 'Donor Monthly Obligations - $selectedYear',
-      );
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('PDF generated and shared successfully'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to generate PDF: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      setState(() {
-        _isLoadingPDF = false;
-        widget.onLoadingChanged(false);
-      });
     }
   }
 
@@ -973,50 +429,8 @@ class _ReportsSectionState extends State<ReportsSection> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              TextButton(
-                onPressed: _isLoadingPDF
-                    ? null // Disable button while loading
-                    : () async {
-                        setState(() {
-                          _isLoadingPDF = true; // Start loading
-                        });
-                        try {
-                          await _generateAllPeoplePDF();
-                        } finally {
-                          setState(() {
-                            _isLoadingPDF = false; // Stop loading
-                          });
-                        }
-                      },
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      "See Monthly Donor List",
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF00A699),
-                        fontFamily: "Inter",
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (_isLoadingPDF) ...[
-                      const SizedBox(width: 8),
-                      const SizedBox(
-                        height: 16,
-                        width: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Color(0xFF00A699)),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
               TextButton(
                 onPressed: () {
                   setState(() {
@@ -1081,7 +495,7 @@ class _ReportsSectionState extends State<ReportsSection> {
                     decoration: BoxDecoration(
                       color: const Color(0xffF2F2F3),
                       borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: const Color(0xFFE0E0E0)),
+                      border: const Border.fromBorderSide(BorderSide(color: Color(0xFFE0E0E0))),
                     ),
                     child: DropdownButtonFormField<int>(
                       value: startMonthIndex,
@@ -1129,7 +543,7 @@ class _ReportsSectionState extends State<ReportsSection> {
                     decoration: BoxDecoration(
                       color: const Color(0xffF2F2F3),
                       borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: const Color(0xFFE0E0E0)),
+                      border: const Border.fromBorderSide(BorderSide(color: Color(0xFFE0E0E0))),
                     ),
                     child: DropdownButtonFormField<int>(
                       value: endMonthIndex,
@@ -1445,6 +859,131 @@ class _ReportPreviewPageState extends State<ReportPreviewPage> {
   int _currentPage = 1;
   final int _itemsPerPage = 10;
 
+  void _showFormatSelectionBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Handle bar
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Select Download Format',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: "Inter",
+                    color: Color(0xFF1BA3A1),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // PDF Option
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1BA3A1).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.picture_as_pdf,
+                      color: Color(0xFF1BA3A1),
+                      size: 24,
+                    ),
+                  ),
+                  title: const Text(
+                    'PDF Format',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontFamily: "Inter",
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'Download as PDF document',
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontFamily: "Inter",
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _generateAndDownloadPDF(context);
+                  },
+                ),
+                const SizedBox(height: 8),
+                // Excel Option
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.table_chart,
+                      color: Colors.green,
+                      size: 24,
+                    ),
+                  ),
+                  title: const Text(
+                    'Excel Format',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontFamily: "Inter",
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'Download as Excel spreadsheet',
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontFamily: "Inter",
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _generateAndDownloadExcel(context);
+                  },
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  List<Map<String, dynamic>> _sortPaymentsByName(
+      List<Map<String, dynamic>> payments) {
+    return List.from(payments)
+      ..sort(
+          (a, b) => (a['name'] ?? 'Unknown').compareTo(b['name'] ?? 'Unknown'));
+  }
+
   double _calculateTotalAmount() {
     return widget.payments.fold(0.0, (sum, payment) {
       if (payment['status'] == 'paid') {
@@ -1455,11 +994,180 @@ class _ReportPreviewPageState extends State<ReportPreviewPage> {
     });
   }
 
-  List<Map<String, dynamic>> _sortPaymentsByName(
-      List<Map<String, dynamic>> payments) {
-    return List.from(payments)
-      ..sort(
-          (a, b) => (a['name'] ?? 'Unknown').compareTo(b['name'] ?? 'Unknown'));
+  Future<void> _generateAndDownloadExcel(BuildContext context) async {
+    try {
+      // Create a new Excel document
+      final excelDoc = excel.Excel.createExcel();
+      final sheet = excelDoc['Payment Report'];
+      
+      // Remove default sheet if it exists
+      if (excelDoc.sheets.containsKey('Sheet1')) {
+        excelDoc.delete('Sheet1');
+      }
+
+      final dateFormat = DateFormat('dd MMMM yyyy');
+      final currentDate = dateFormat.format(DateTime.now());
+
+      // Set column widths
+      sheet.setColumnWidth(0, 5);   // S.No
+      sheet.setColumnWidth(1, 20);  // Name
+      sheet.setColumnWidth(2, 15);  // Amount
+      sheet.setColumnWidth(3, 12);  // Month
+      sheet.setColumnWidth(4, 10);  // Year
+      sheet.setColumnWidth(5, 12);  // Status
+      sheet.setColumnWidth(6, 15);  // Date
+
+      // Header styling
+      final headerStyle = excel.CellStyle(
+        backgroundColorHex: '#0097A7',
+        fontColorHex: '#FFFFFF',
+        bold: true,
+        horizontalAlign: excel.HorizontalAlign.Center,
+        verticalAlign: excel.VerticalAlign.Center,
+      );
+
+      // Title row
+      sheet.cell(excel.CellIndex.indexByString('A1')).value = excel.TextCellValue('PAYMENT REPORT');
+      sheet.merge(excel.CellIndex.indexByString('A1'), excel.CellIndex.indexByString('G1'));
+      sheet.cell(excel.CellIndex.indexByString('A1')).cellStyle = excel.CellStyle(
+        bold: true,
+        fontSize: 14,
+        horizontalAlign: excel.HorizontalAlign.Center,
+        backgroundColorHex: '#0097A7',
+        fontColorHex: '#FFFFFF',
+      );
+
+      // Subtitle row
+      sheet.cell(excel.CellIndex.indexByString('A2')).value = excel.TextCellValue('${widget.selectedMonth} ${widget.selectedYear}');
+      sheet.merge(excel.CellIndex.indexByString('A2'), excel.CellIndex.indexByString('G2'));
+      sheet.cell(excel.CellIndex.indexByString('A2')).cellStyle = excel.CellStyle(
+        bold: true,
+        fontSize: 12,
+        horizontalAlign: excel.HorizontalAlign.Center,
+        backgroundColorHex: '#0097A7',
+        fontColorHex: '#FFFFFF',
+      );
+
+      // Generated date row
+      sheet.cell(excel.CellIndex.indexByString('A3')).value = excel.TextCellValue('Generated: $currentDate');
+      sheet.merge(excel.CellIndex.indexByString('A3'), excel.CellIndex.indexByString('G3'));
+      sheet.cell(excel.CellIndex.indexByString('A3')).cellStyle = excel.CellStyle(
+        fontSize: 10,
+        horizontalAlign: excel.HorizontalAlign.Center,
+        backgroundColorHex: '#F2F2F2',
+      );
+
+      // Empty row
+      sheet.cell(excel.CellIndex.indexByString('A4')).value = excel.TextCellValue('');
+
+      // Headers
+      final headers = ['S.No', 'Name', 'Amount (₹)', 'Month', 'Year', 'Status', 'Date'];
+      for (int i = 0; i < headers.length; i++) {
+        final cell = sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 4));
+        cell.value = excel.TextCellValue(headers[i]);
+        cell.cellStyle = headerStyle;
+      }
+
+      // Sort payments by name
+      final sortedPayments = _sortPaymentsByName(widget.payments);
+
+      // Data rows
+      for (int i = 0; i < sortedPayments.length; i++) {
+        final payment = sortedPayments[i];
+        final rowIndex = i + 5; // Starting from row 6 (0-indexed)
+
+        // S.No
+        sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex))
+            .value = excel.IntCellValue(i + 1);
+
+        // Name
+        sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: rowIndex))
+            .value = excel.TextCellValue(payment['name'] ?? 'Unknown');
+
+        // Amount
+        final amount = (payment['amount'] as num?)?.toDouble() ?? 0.0;
+        sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: rowIndex))
+            .value = excel.DoubleCellValue(amount);
+
+        // Month
+        sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: rowIndex))
+            .value = excel.TextCellValue(payment['month'] ?? '');
+
+        // Year
+        sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: rowIndex))
+            .value = excel.TextCellValue(payment['year']?.toString() ?? '');
+
+        // Status
+        final status = payment['status'] ?? 'unpaid';
+        final statusCell = sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: rowIndex));
+        statusCell.value = excel.TextCellValue(status.toUpperCase());
+        
+        // Style status cell based on payment status
+        statusCell.cellStyle = excel.CellStyle(
+          backgroundColorHex: status == 'paid' ? '#F2F2F2' : '#FFC5C5',
+          fontColorHex: status == 'paid' ? '#008000' : '#FF0000',
+          bold: true,
+          horizontalAlign: excel.HorizontalAlign.Center,
+        );
+
+        // Date
+        final timestamp = payment['timestamp'];
+        String dateStr = '';
+        if (timestamp != null) {
+          try {
+            final date = (timestamp as Timestamp).toDate();
+            dateStr = DateFormat('dd/MM/yyyy').format(date);
+          } catch (e) {
+            dateStr = 'N/A';
+          }
+        }
+        sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: rowIndex))
+            .value = excel.TextCellValue(dateStr);
+      }
+
+      // Summary row
+      final summaryRowIndex = sortedPayments.length + 6;
+      sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: summaryRowIndex))
+          .value = excel.TextCellValue('TOTAL');
+      sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: summaryRowIndex))
+          .cellStyle = excel.CellStyle(bold: true, backgroundColorHex: '#F2F2F2'); // lightGray
+
+      final totalAmount = _calculateTotalAmount();
+      sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: summaryRowIndex))
+          .value = excel.DoubleCellValue(totalAmount);
+      sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: summaryRowIndex))
+          .cellStyle = excel.CellStyle(bold: true, backgroundColorHex: '#F2F2F2'); // lightGray
+
+      // Save and share the Excel file
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/payment_report_${widget.selectedYear}_${widget.selectedMonth.replaceAll(' ', '_')}.xlsx');
+      
+      final excelBytes = excelDoc.encode();
+      if (excelBytes != null) {
+        await file.writeAsBytes(excelBytes);
+
+        await Share.shareXFiles(
+          [XFile(file.path)],
+          text: 'Payment Report - ${widget.selectedMonth} ${widget.selectedYear}',
+        );
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Excel file generated and shared successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        throw Exception('Failed to encode Excel file');
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to generate Excel file: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _generateAndDownloadPDF(BuildContext context) async {
@@ -2148,124 +1856,165 @@ class _ReportPreviewPageState extends State<ReportPreviewPage> {
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: Color(0xFF00A699)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download),
+            onPressed: () => _showFormatSelectionBottomSheet(context),
+            tooltip: 'Download Report',
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Flexible(
-                  child: Text(
-                    'Filter: ${widget.selectedFilter}',
+            // Report Summary
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8F9FA),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE9ECEF)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Report Summary',
                     style: const TextStyle(
                       fontFamily: "Inter",
                       fontWeight: FontWeight.w600,
-                      fontSize: 14,
+                      fontSize: 16,
+                      color: Color(0xFF00A699),
                     ),
-                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                const SizedBox(width: 16),
-                Flexible(
-                  child: Text(
-                    'Person: ${widget.selectedPerson}',
-                    style: const TextStyle(
-                      fontFamily: "Inter",
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.vertical,
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: DataTable(
-                    columnSpacing: 16,
-                    headingRowColor: WidgetStateProperty.all(Colors.grey[100]),
-                    dataRowMinHeight: 48,
-                    dataRowMaxHeight: 48,
-                    columns: const [
-                      DataColumn(
-                        label: Text(
-                          'S.No.',
-                          style: TextStyle(
-                            fontFamily: "Inter",
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Total Payments',
+                              style: const TextStyle(
+                                fontFamily: "Inter",
+                                fontWeight: FontWeight.w400,
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            Text(
+                              '${totalItems}',
+                              style: const TextStyle(
+                                fontFamily: "Inter",
+                                fontWeight: FontWeight.w600,
+                                fontSize: 18,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      DataColumn(
-                        label: Text(
-                          'Name',
-                          style: TextStyle(
-                            fontFamily: "Inter",
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                      DataColumn(
-                        label: Text(
-                          'Amount',
-                          style: TextStyle(
-                            fontFamily: "Inter",
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                      DataColumn(
-                        label: Text(
-                          'Method',
-                          style: TextStyle(
-                            fontFamily: "Inter",
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                      DataColumn(
-                        label: Text(
-                          'Payment For',
-                          style: TextStyle(
-                            fontFamily: "Inter",
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                      DataColumn(
-                        label: Text(
-                          'Date Paid',
-                          style: TextStyle(
-                            fontFamily: "Inter",
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                      DataColumn(
-                        label: Text(
-                          'Status',
-                          style: TextStyle(
-                            fontFamily: "Inter",
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Total Amount',
+                              style: const TextStyle(
+                                fontFamily: "Inter",
+                                fontWeight: FontWeight.w400,
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            Text(
+                              '₹${totalAmount.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                fontFamily: "Inter",
+                                fontWeight: FontWeight.w600,
+                                fontSize: 18,
+                                color: Color(0xFF00A699),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
-                    rows: currentPagePayments.asMap().entries.map((entry) {
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Data Table
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  columns: [
+                    DataColumn(
+                      label: Text(
+                        'S.No',
+                        style: TextStyle(
+                          fontFamily: "Inter",
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Name',
+                        style: TextStyle(
+                          fontFamily: "Inter",
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Amount (₹)',
+                        style: TextStyle(
+                          fontFamily: "Inter",
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Payment For',
+                        style: TextStyle(
+                          fontFamily: "Inter",
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Date Paid',
+                        style: TextStyle(
+                          fontFamily: "Inter",
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Status',
+                        style: TextStyle(
+                          fontFamily: "Inter",
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                  rows: currentPagePayments.asMap().entries.map((entry) {
                       final index = entry.key + startIndex;
                       final payment = entry.value;
                       final timestamp =
@@ -2287,82 +2036,24 @@ class _ReportPreviewPageState extends State<ReportPreviewPage> {
                               '${index + 1}',
                               style: const TextStyle(
                                 fontFamily: "Inter",
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                          DataCell(
-                            Text(
-                              payment['name'] ?? 'Unknown',
-                              style: const TextStyle(
-                                fontFamily: "Inter",
-                                fontSize: 12,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          DataCell(
-                            Text(
-                              payment['status'] == 'paid'
-                                  ? '${(payment['amount'] as num?)?.toStringAsFixed(0) ?? '0'}'
-                                  : '-',
-                              style: const TextStyle(
-                                fontFamily: "Inter",
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                          DataCell(
-                            Text(
-                              payment['status'] == 'paid'
-                                  ? (payment['paymentMethod'] ?? 'Unknown')
-                                  : '-',
-                              style: const TextStyle(
-                                fontFamily: "Inter",
-                                fontSize: 12,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          DataCell(
-                            Text(
-                              paymentFor,
-                              style: const TextStyle(
-                                fontFamily: "Inter",
-                                fontSize: 12,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          DataCell(
-                            Text(
-                              payment['status'] == 'paid' ? datePaid : '-',
-                              style: const TextStyle(
-                                fontFamily: "Inter",
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                          DataCell(
-                            Text(
-                              status,
-                              style: TextStyle(
-                                fontFamily: "Inter",
-                                fontSize: 12,
-                                color: status == 'Paid'
-                                    ? Colors.green
-                                    : Colors.red,
-                              ),
-                            ),
-                          ),
-                        ],
-                      );
-                    }).toList(),
-                  ),
-                ),
               ),
             ),
-            const SizedBox(height: 16),
+            Text(
+              'Total Amount: ${totalAmount.toStringAsFixed(0)}',
+              style: const TextStyle(
+                fontFamily: "Inter",
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (totalPages > 1)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -2390,11 +2081,7 @@ class _ReportPreviewPageState extends State<ReportPreviewPage> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   IconButton(
-                    icon: const HugeIcon(
-                      icon: HugeIcons.strokeRoundedArrowLeft01,
-                      color: Colors.black,
-                      size: 24,
-                    ),
+                    icon: const Icon(Icons.arrow_back_ios),
                     onPressed: _currentPage > 1
                         ? () {
                             setState(() {
@@ -2411,11 +2098,7 @@ class _ReportPreviewPageState extends State<ReportPreviewPage> {
                     ),
                   ),
                   IconButton(
-                    icon: const HugeIcon(
-                      icon: HugeIcons.strokeRoundedArrowRight01,
-                      color: Colors.black,
-                      size: 24,
-                    ),
+                    icon: const Icon(Icons.arrow_forward_ios),
                     onPressed: _currentPage < totalPages
                         ? () {
                             setState(() {
@@ -2431,8 +2114,8 @@ class _ReportPreviewPageState extends State<ReportPreviewPage> {
               width: double.infinity,
               height: 48,
               child: ElevatedButton(
-                onPressed: () async {
-                  await _generateAndDownloadPDF(context);
+                onPressed: () {
+                  _showFormatSelectionBottomSheet(context);
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF00A699),
@@ -2443,7 +2126,7 @@ class _ReportPreviewPageState extends State<ReportPreviewPage> {
                   elevation: 0,
                 ),
                 child: const Text(
-                  'Download PDF',
+                  'Download',
                   style: TextStyle(
                     fontFamily: "Inter",
                     fontWeight: FontWeight.w600,

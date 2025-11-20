@@ -387,42 +387,60 @@ class _PaymentsPageState extends State<PaymentsPage> {
   void _showErrorDialog(String message) {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+        title: const Text(
+          'Error',
+          textAlign: TextAlign.start,
+          style: TextStyle(
+            fontFamily: "Inter",
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF212121),
+            height: 1.3,
+          ),
+        ),
         content: Text(
           message,
+          textAlign: TextAlign.start,
           style: const TextStyle(
             fontFamily: "Inter",
             fontWeight: FontWeight.w400,
-            fontSize: 12,
+            fontSize: 14,
+            color: Color(0xFF757575),
+            height: 1.5,
           ),
         ),
         actions: [
-          Container(
-            height: 26,
-            width: 70,
-            margin: const EdgeInsets.only(right: 4, bottom: 4),
-            clipBehavior: Clip.hardEdge,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-            ),
+          SizedBox(
+            width: double.infinity,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                backgroundColor: const Color(0xff1BA3A1),
                 foregroundColor: Colors.white,
-                backgroundColor: const Color(0xffF44336),
                 elevation: 0,
+                shadowColor: Colors.transparent,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(8),
                 ),
               ),
+              onPressed: () => Navigator.pop(context),
               child: const Text(
                 'OK',
                 style: TextStyle(
                   fontFamily: "Inter",
-                  fontWeight: FontWeight.w400,
-                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  letterSpacing: 0.2,
                 ),
               ),
-              onPressed: () => Navigator.pop(context),
             ),
           ),
         ],
@@ -434,43 +452,65 @@ class _PaymentsPageState extends State<PaymentsPage> {
     final provider = Provider.of<PaymentsPageProvider>(context, listen: false);
     final monthCount = provider.isMultiMonthMode ? provider.selectedMonths.length : 1;
     final message = monthCount > 1 
-        ? 'Payment Recorded for $monthCount months!'
-        : 'Payment Recorded!';
+        ? 'Payment recorded successfully for $monthCount months!'
+        : 'Payment recorded successfully!';
     
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+        title: const Text(
+          'Success',
+          textAlign: TextAlign.start,
+          style: TextStyle(
+            fontFamily: "Inter",
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF212121),
+            height: 1.3,
+          ),
+        ),
         content: Text(
           message,
+          textAlign: TextAlign.start,
           style: const TextStyle(
             fontFamily: "Inter",
             fontWeight: FontWeight.w400,
-            fontSize: 12,
+            fontSize: 14,
+            color: Color(0xFF757575),
+            height: 1.5,
           ),
         ),
         actions: [
-          Container(
-            height: 30,
-            width: 70,
-            margin: const EdgeInsets.only(right: 4, bottom: 4),
+          SizedBox(
+            width: double.infinity,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                backgroundColor: const Color(0xff1BA3A1),
                 foregroundColor: Colors.white,
-                backgroundColor: const Color(0xffF44336),
                 elevation: 0,
+                shadowColor: Colors.transparent,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius: BorderRadius.circular(8),
                 ),
               ),
+              onPressed: () => Navigator.pop(context),
               child: const Text(
                 'OK',
                 style: TextStyle(
                   fontFamily: "Inter",
-                  fontWeight: FontWeight.bold,
-                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  letterSpacing: 0.2,
                 ),
               ),
-              onPressed: () => Navigator.pop(context),
             ),
           ),
         ],
@@ -481,38 +521,60 @@ class _PaymentsPageState extends State<PaymentsPage> {
   void _showAlreadyAddedDialog(String month, String year) {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+        title: const Text(
+          'Payment Already Added',
+          textAlign: TextAlign.start,
+          style: TextStyle(
+            fontFamily: "Inter",
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF212121),
+            height: 1.3,
+          ),
+        ),
         content: Text(
-          'Payment already added for $month $year',
+          'A payment has already been recorded for $month $year.',
+          textAlign: TextAlign.start,
           style: const TextStyle(
             fontFamily: "Inter",
             fontWeight: FontWeight.w400,
-            fontSize: 12,
+            fontSize: 14,
+            color: Color(0xFF757575),
+            height: 1.5,
           ),
         ),
         actions: [
-          Container(
-            height: 30,
-            width: 70,
-            margin: const EdgeInsets.only(right: 4, bottom: 4),
+          SizedBox(
+            width: double.infinity,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                backgroundColor: const Color(0xff1BA3A1),
                 foregroundColor: Colors.white,
-                backgroundColor: const Color(0xffF44336),
                 elevation: 0,
+                shadowColor: Colors.transparent,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius: BorderRadius.circular(8),
                 ),
               ),
+              onPressed: () => Navigator.pop(context),
               child: const Text(
                 'OK',
                 style: TextStyle(
                   fontFamily: "Inter",
-                  fontWeight: FontWeight.bold,
-                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  letterSpacing: 0.2,
                 ),
               ),
-              onPressed: () => Navigator.pop(context),
             ),
           ),
         ],
@@ -527,12 +589,15 @@ class _PaymentsPageState extends State<PaymentsPage> {
     try {
       await Provider.of<PaymentsPageProvider>(context, listen: false)
           .recordPayment(donorId);
+      
+      // Trigger immediate sync to update local database
+      await _localDb.syncWithFirestore();
+      
       // Dismiss loading before showing success UI
       Navigator.of(context, rootNavigator: true).pop();
       // Clear form fields after successful submission
       Provider.of<PaymentsPageProvider>(context, listen: false).clearFields();
-      // Trigger a background sync so Home page recent donations updates
-      LocalDatabaseService().syncWithFirestore();
+      
       _showSuccessDialog();
     } catch (e) {
       // Dismiss loading before showing error UI
@@ -1035,7 +1100,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                                   fontSize: 10,
                                   fontFamily: "Inter",
                                   fontWeight: FontWeight.w400,
-                                  decoration: TextDecoration.underline,
+                                  decoration: TextDecoration.underline,decorationColor: Colors.black,
                                   color: Color(0xff0B190C),
                                 ),
                               ),

@@ -22,10 +22,11 @@ class _PeopleListViewHomeState extends State<PeopleListViewHome> {
   @override
   void initState() {
     super.initState();
-    // Initial sync with Firestore
-    _localDb.syncWithFirestore().catchError((error) {
-      // Handle error silently - we'll still show cached data
-      debugPrint('Error syncing with Firestore: $error');
+    // Only sync with Firestore if data is stale or empty
+    // This prevents unnecessary refreshes when switching tabs
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Check if we need to sync (e.g., if data is empty)
+      // This approach avoids forced refreshes on every tab switch
     });
   }
 

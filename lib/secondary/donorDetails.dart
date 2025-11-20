@@ -22,6 +22,8 @@ import '../models/person_model.dart';
 import '../services/local_database_service.dart';
 import '../services/image_cache_service.dart';
 import 'donorAdd.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/upi_payment_service.dart';
 
 // Custom page route with slide transition from right to left
 class SlidingPageTransitionRL extends PageRouteBuilder {
@@ -531,6 +533,26 @@ class _donorDetailsState extends State<donorDetails> {
 
   Future<void> _deleteDonor() async {
     try {
+      // First, get the donor document data before deleting
+      final donorDoc = await FirebaseFirestore.instance
+          .collection('donors')
+          .doc(widget.donorId)
+          .get();
+
+      if (donorDoc.exists) {
+        final donorData = donorDoc.data()!;
+        
+        // Save to deleted_donors collection for history
+        await FirebaseFirestore.instance
+            .collection('deleted_donors')
+            .add({
+          ...donorData,
+          'donorId': widget.donorId,
+          'originalDocumentPath': 'donors/${widget.donorId}',
+          'deletedAt': FieldValue.serverTimestamp(),
+        });
+      }
+
       // Delete all paymentStatus documents in the subcollection
       final paymentStatusQuery = await FirebaseFirestore.instance
           .collection('donors')
@@ -553,7 +575,7 @@ class _donorDetailsState extends State<donorDetails> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Donor deleted successfully')),
       );
-      Navigator.pop(context);
+      Navigator.pop(context, true);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error deleting donor: $e')),
@@ -627,67 +649,219 @@ class _donorDetailsState extends State<donorDetails> {
     }
   }
 
+  Future<void> _sendPaymentReminder(String phoneNumber, String donorName, double monthlyAmount) async {
+    try {
+      // Fetch current year's payment status
+      final currentYear = DateTime.now().year.toString();
+      final currentMonth = DateTime.now().month;
+      final months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December',
+      ];
+      
+      final snapshot = await FirebaseFirestore.instance
+          .collection('donors')
+          .doc(widget.donorId)
+          .collection('paymentStatus')
+          .where('year', isEqualTo: currentYear)
+          .get();
+      
+      // Get paid months
+      final paidMonths = snapshot.docs
+          .where((doc) => doc.data()['status'] == 'paid')
+          .map((doc) => doc.data()['month'] as String)
+          .toSet();
+      
+      // Calculate unpaid months (only up to current month)
+      final monthsToCheck = months.sublist(0, currentMonth);
+      final unpaidMonths = monthsToCheck.where((month) => !paidMonths.contains(month)).toList();
+      
+      if (unpaidMonths.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('All payments are up to date!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        return;
+      }
+      
+      // Calculate total amount due
+      final totalAmount = monthlyAmount * unpaidMonths.length;
+      
+      // Generate UPI link
+      String upiLink = '';
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final upiId = prefs.getString('upi_id') ?? '';
+        
+        if (upiId.isNotEmpty) {
+          upiLink = await UpiPaymentService.buildUpiLink(
+            amount: totalAmount,
+            transactionNote: 'Donation Payment - $donorName',
+          );
+        }
+      } catch (e) {
+        print('Error generating UPI link: $e');
+      }
+      
+      // Create reminder message
+      final unpaidMonthsList = unpaidMonths.join(', ');
+      final message = '''Dear $donorName,
+
+This is a friendly reminder for your pending donations:
+
+Unpaid Months: $unpaidMonthsList
+Total Amount Due: ₹${totalAmount.toStringAsFixed(0)}
+${upiLink.isNotEmpty ? '\nPlease pay using this link:\n$upiLink\n' : ''}
+Thank you for your continued support!
+
+- PMJ Team''';
+      
+      // Clean phone number
+      String cleanNumber = phoneNumber.replaceAll(RegExp(r'[^0-9+]'), '');
+      
+      if (!cleanNumber.startsWith('+')) {
+        if (cleanNumber.startsWith('91')) {
+          cleanNumber = '+$cleanNumber';
+        } else if (cleanNumber.length == 10) {
+          cleanNumber = '+91$cleanNumber';
+        }
+      }
+      
+      final whatsappNumber = cleanNumber.replaceFirst('+', '');
+      final Uri whatsappUri = Uri.parse(
+        'https://wa.me/$whatsappNumber?text=${Uri.encodeComponent(message)}'
+      );
+      
+      if (await canLaunchUrl(whatsappUri)) {
+        await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('WhatsApp is not installed or could not be opened'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error sending reminder: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   void _handleDeleteConfirmation(BuildContext context) {
     showDialog(
       context: context,
+      barrierDismissible: false, // Prevent accidental dismissal
       builder: (BuildContext context) {
         return AlertDialog(
-          content: Text(
-            'Are you sure you want to Delete?',
-            style: TextStyle(
-                fontFamily: "Inter", fontWeight: FontWeight.w400, fontSize: 12),
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
-          actions: <Widget>[
-            Container(
-              height: 30,
-              width: 70,
-              margin: EdgeInsets.only(right: 4, bottom: 4),
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    backgroundColor: Color(0xffF44336),
-                    elevation: 0),
-                child: Text(
-                  'Cancel',
-                  style: TextStyle(
-                      fontFamily: "Inter",
-                      fontWeight: FontWeight.bold,
-                      fontSize: 9),
-                ),
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
-              ),
+          contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+
+          // Icon at the top for visual clarity
+
+          title: const Text(
+            "Delete Donor?",
+            textAlign: TextAlign.start, // Changed from center to start
+            style: TextStyle(
+              fontFamily: "Inter",
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF212121),
+              height: 1.3,
             ),
-            Container(
-              height: 30,
-              width: 70,
-              margin: EdgeInsets.only(right: 0, bottom: 4),
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    backgroundColor: Color(0xffF44336),
-                    elevation: 0),
-                child: Text(
-                  'Delete',
-                  style: TextStyle(
-                      fontFamily: "Inter",
-                      fontWeight: FontWeight.bold,
-                      fontSize: 9),
+          ),
+
+          content: const Text(
+            'This action cannot be undone. Are you sure you want to permanently delete this donor?',
+            textAlign: TextAlign.start, // Changed from center to start
+            style: TextStyle(
+              fontFamily: "Inter",
+              fontWeight: FontWeight.w400,
+              fontSize: 14,
+              color: Color(0xFF757575),
+              height: 1.5,
+            ),
+          ),
+
+          actions: [
+            Row(
+              children: [
+                // Cancel Button (Expanded for better mobile UX)
+                Expanded(
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      side: const BorderSide(
+                        color: Color(0xFFE0E0E0),
+                        width: 1.5,
+                      ),
+                      foregroundColor: const Color(0xFF616161),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(
+                        fontFamily: "Inter",
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ),
                 ),
-                onPressed: () async {
-                  Navigator.of(context).pop();
-                  await _deleteDonor();
-                },
-              ),
+
+                const SizedBox(width: 12),
+
+                // Delete Button (Expanded for symmetry)
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      backgroundColor: const Color(0xFFD32F2F),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onPressed: () async {
+                      Navigator.of(context).pop();
+                      await _deleteDonor();
+                    },
+                    child: const Text(
+                      'Delete',
+                      style: TextStyle(
+                        fontFamily: "Inter",
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         );
       },
     );
-  }
-
-  @override
+  }  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Color(0xffFFFFFF),
@@ -776,6 +950,7 @@ class _donorDetailsState extends State<donorDetails> {
                       ),
                     ),
                     trailing: PopupMenuButton<String>(
+                      color: Colors.white,
                       icon: SvgPicture.asset(
                           'lib/assets/images/settingsnew.svg',
                           height: 40,
@@ -787,6 +962,8 @@ class _donorDetailsState extends State<donorDetails> {
                           await _makePhoneCall(donorNumber);
                         } else if (value == 'whatsapp') {
                           await _openWhatsApp(donorNumber);
+                        } else if (value == 'send_reminder') {
+                          await _sendPaymentReminder(donorNumber, donorData['name'], donorData['amount']);
                         }
                       },
                       itemBuilder: (context) => [
@@ -877,6 +1054,56 @@ class _donorDetailsState extends State<donorDetails> {
                                       SizedBox(height: 2),
                                       Text(
                                         'Send a message',
+                                        style: TextStyle(
+                                          fontFamily: 'Inter',
+                                          fontSize: 11,
+                                          color: Color(0xff817D8A),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        PopupMenuItem<String>(
+                          value: 'send_reminder',
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0x1FFF9800), // Orange tint
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Icon(
+                                    Icons.notifications_active,
+                                    color: Color(0xffFF9800),
+                                    size: 18,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Send Reminder',
+                                        style: TextStyle(
+                                          fontFamily: 'Inter',
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      SizedBox(height: 2),
+                                      Text(
+                                        'Payment reminder via WhatsApp',
                                         style: TextStyle(
                                           fontFamily: 'Inter',
                                           fontSize: 11,
@@ -1322,6 +1549,10 @@ class PaymentBottomSheet extends StatefulWidget {
 }
 
 class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
+  bool _isLoading = false;
+  bool _isMultiMonthMode = false;
+  List<String> _selectedMonths = [];
+  late Future<Map<String, dynamic>> _donorDataFuture;
   late TextEditingController amount;
   String? _selectedPayment;
   String? _selectedMonth;
@@ -1352,43 +1583,68 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
     _selectedYear = currentYear.toString(); // Default to current year
     _selectedMonth =
         _months[DateTime.now().month - 1]; // Default to current month
+    _donorDataFuture = fetchDonorData(widget.donorId);
   }
 
   void _showAlreadyAddedDialog(String month, String year) {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+        title: const Text(
+          'Payment Already Added',
+          textAlign: TextAlign.start,
+          style: TextStyle(
+            fontFamily: "Inter",
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF212121),
+            height: 1.3,
+          ),
+        ),
         content: Text(
-          'Payment already added for $month $year',
+          _isMultiMonthMode
+              ? 'Payments already exist for: $month'
+              : 'A payment has already been recorded for $month $year.',
+          textAlign: TextAlign.start,
           style: const TextStyle(
             fontFamily: "Inter",
             fontWeight: FontWeight.w400,
-            fontSize: 12,
+            fontSize: 14,
+            color: Color(0xFF757575),
+            height: 1.5,
           ),
         ),
         actions: [
-          Container(
-            height: 30,
-            width: 70,
-            margin: const EdgeInsets.only(right: 4, bottom: 4),
+          SizedBox(
+            width: double.infinity,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                backgroundColor: const Color(0xff1BA3A1),
                 foregroundColor: Colors.white,
-                backgroundColor: const Color(0xffF44336),
                 elevation: 0,
+                shadowColor: Colors.transparent,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius: BorderRadius.circular(8),
                 ),
               ),
+              onPressed: () => Navigator.pop(context),
               child: const Text(
                 'OK',
                 style: TextStyle(
                   fontFamily: "Inter",
-                  fontWeight: FontWeight.bold,
-                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  letterSpacing: 0.2,
                 ),
               ),
-              onPressed: () => Navigator.pop(context),
             ),
           ),
         ],
@@ -1396,49 +1652,75 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
     );
   }
 
-  Future<void> _recordPayment() async {
+    Future<void> _recordPayment() async {
     // Check for missing fields
     List<String> missingFields = [];
     if (_selectedYear == null) missingFields.add('Year');
-    if (_selectedMonth == null) missingFields.add('Month');
+    if (_isMultiMonthMode) {
+      if (_selectedMonths.isEmpty) missingFields.add('Months');
+    } else {
+      if (_selectedMonth == null) missingFields.add('Month');
+    }
     if (amount.text.isEmpty) missingFields.add('Amount');
     if (_selectedPayment == null) missingFields.add('Payment Method');
 
     if (missingFields.isNotEmpty) {
       showDialog(
         context: context,
+        barrierDismissible: false,
         builder: (context) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+          title: const Text(
+            'Missing Information',
+            textAlign: TextAlign.start,
+            style: TextStyle(
+              fontFamily: "Inter",
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF212121),
+              height: 1.3,
+            ),
+          ),
           content: Text(
             'Please fill the following fields: ${missingFields.join(', ')}',
+            textAlign: TextAlign.start,
             style: const TextStyle(
               fontFamily: "Inter",
               fontWeight: FontWeight.w400,
-              fontSize: 12,
+              fontSize: 14,
+              color: Color(0xFF757575),
+              height: 1.5,
             ),
           ),
           actions: [
-            Container(
-              height: 26,
-              width: 49,
-              margin: const EdgeInsets.only(right: 4, bottom: 4),
+            SizedBox(
+              width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  backgroundColor: const Color(0xff1BA3A1),
                   foregroundColor: Colors.white,
-                  backgroundColor: const Color(0xffF44336),
                   elevation: 0,
+                  shadowColor: Colors.transparent,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
+                onPressed: () => Navigator.pop(context),
                 child: const Text(
                   'OK',
                   style: TextStyle(
                     fontFamily: "Inter",
-                    fontWeight: FontWeight.w400,
-                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    letterSpacing: 0.2,
                   ),
                 ),
-                onPressed: () => Navigator.pop(context),
               ),
             ),
           ],
@@ -1451,38 +1733,60 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
     if (parsedAmount == null || parsedAmount <= 0) {
       showDialog(
         context: context,
+        barrierDismissible: false,
         builder: (context) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+          title: const Text(
+            'Invalid Amount',
+            textAlign: TextAlign.start,
+            style: TextStyle(
+              fontFamily: "Inter",
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF212121),
+              height: 1.3,
+            ),
+          ),
           content: const Text(
-            'Please enter a valid positive amount',
+            'Please enter a valid positive amount.',
+            textAlign: TextAlign.start,
             style: TextStyle(
               fontFamily: "Inter",
               fontWeight: FontWeight.w400,
-              fontSize: 12,
+              fontSize: 14,
+              color: Color(0xFF757575),
+              height: 1.5,
             ),
           ),
           actions: [
-            Container(
-              height: 26,
-              width: 49,
-              margin: const EdgeInsets.only(right: 4, bottom: 4),
+            SizedBox(
+              width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  backgroundColor: const Color(0xff1BA3A1),
                   foregroundColor: Colors.white,
-                  backgroundColor: const Color(0xffF44336),
                   elevation: 0,
+                  shadowColor: Colors.transparent,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
+                onPressed: () => Navigator.pop(context),
                 child: const Text(
                   'OK',
                   style: TextStyle(
                     fontFamily: "Inter",
-                    fontWeight: FontWeight.w400,
-                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    letterSpacing: 0.2,
                   ),
                 ),
-                onPressed: () => Navigator.pop(context),
               ),
             ),
           ],
@@ -1491,68 +1795,128 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
       return;
     }
 
-    try {
-      final monthYearKey = '$_selectedMonth-$_selectedYear';
-      final statusRef = FirebaseFirestore.instance
-          .collection('donors')
-          .doc(widget.donorId)
-          .collection('paymentStatus')
-          .doc(monthYearKey);
+    setState(() {
+      _isLoading = true;
+    });
 
-      // Check if payment already exists
-      final existingPayment = await statusRef.get();
-      if (existingPayment.exists) {
-        _showAlreadyAddedDialog(_selectedMonth!, _selectedYear!);
+    try {
+      final donorRef =
+          FirebaseFirestore.instance.collection('donors').doc(widget.donorId);
+      List<String> monthsToProcess =
+          _isMultiMonthMode ? _selectedMonths : [_selectedMonth!];
+      List<String> existingPayments = [];
+
+      // Check for existing payments
+      for (String month in monthsToProcess) {
+        final monthYearKey = '$month-$_selectedYear';
+        final statusRef =
+            donorRef.collection('paymentStatus').doc(monthYearKey);
+        final existingPayment = await statusRef.get();
+        if (existingPayment.exists &&
+            existingPayment.data()?['status'] == 'paid') {
+          existingPayments.add('$month $_selectedYear');
+        }
+      }
+
+      if (existingPayments.isNotEmpty) {
+        setState(() {
+          _isLoading = false;
+        });
+        _showAlreadyAddedDialog(
+            existingPayments.join(', '), _selectedYear ?? '');
         return;
       }
 
-      // Record new payment
-      await statusRef.set({
-        'amount': parsedAmount,
-        'month': _selectedMonth,
-        'paymentMethod': _selectedPayment,
-        'year': _selectedYear,
-        'status': 'paid',
-        'timestamp': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      // Record payments
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+      for (String month in monthsToProcess) {
+        final monthYearKey = '$month-$_selectedYear';
+        final statusRef =
+            donorRef.collection('paymentStatus').doc(monthYearKey);
+
+        batch.set(
+            statusRef,
+            {
+              'amount': parsedAmount,
+              'month': month,
+              'paymentMethod': _selectedPayment,
+              'year': _selectedYear,
+              'status': 'paid',
+              'timestamp': FieldValue.serverTimestamp(),
+            },
+            SetOptions(merge: true));
+      }
+
+      await batch.commit();
+
+      // Sync local cache so streams (e.g., Home recent donations) update immediately
+      await LocalDatabaseService().syncWithFirestore();
 
       widget.onSubmit();
-      Navigator.pop(context);
+      if (mounted) {
+        // Return true so callers can refresh if needed
+        Navigator.pop(context, true);
+      }
     } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
       showDialog(
         context: context,
+        barrierDismissible: false,
         builder: (context) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+          title: const Text(
+            'Error',
+            textAlign: TextAlign.start,
+            style: TextStyle(
+              fontFamily: "Inter",
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF212121),
+              height: 1.3,
+            ),
+          ),
           content: Text(
-            'Error: $e',
+            'An error occurred: $e',
+            textAlign: TextAlign.start,
             style: const TextStyle(
               fontFamily: "Inter",
               fontWeight: FontWeight.w400,
-              fontSize: 12,
+              fontSize: 14,
+              color: Color(0xFF757575),
+              height: 1.5,
             ),
           ),
           actions: [
-            Container(
-              height: 26,
-              width: 49,
-              margin: const EdgeInsets.only(right: 4, bottom: 4),
+            SizedBox(
+              width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  backgroundColor: const Color(0xff1BA3A1),
                   foregroundColor: Colors.white,
-                  backgroundColor: const Color(0xffF44336),
                   elevation: 0,
+                  shadowColor: Colors.transparent,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
+                onPressed: () => Navigator.pop(context),
                 child: const Text(
                   'OK',
                   style: TextStyle(
                     fontFamily: "Inter",
-                    fontWeight: FontWeight.w400,
-                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    letterSpacing: 0.2,
                   ),
                 ),
-                onPressed: () => Navigator.pop(context),
               ),
             ),
           ],
@@ -1743,7 +2107,7 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
                   vertical: 16,
                 ),
                 child: FutureBuilder<Map<String, dynamic>>(
-                  future: fetchDonorData(widget.donorId),
+                  future: _donorDataFuture,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
@@ -1790,22 +2154,181 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
                           hintText: DateTime.now().year.toString(),
                         ),
                         const SizedBox(height: 16),
-                        _buildDropdown<String>(
-                          label: 'Select Month',
-                          value: _selectedMonth,
-                          items: _months
-                              .map((month) => DropdownMenuItem<String>(
-                                    value: month,
-                                    child: Text(month),
-                                  ))
-                              .toList(),
-                          onChanged: (newValue) {
-                            setState(() {
-                              _selectedMonth = newValue;
-                            });
-                          },
-                          hintText: _months[DateTime.now().month - 1],
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Select Month(s)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            Row(
+                              children: [
+                                Text(
+                                  'Multi-month',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Transform.scale(
+                                  scale: 0.8,
+                                  child: Switch(
+                                    value: _isMultiMonthMode,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _isMultiMonthMode = value;
+                                        if (!value) {
+                                          _selectedMonths.clear();
+                                          if (_selectedMonths.isNotEmpty) {
+                                            _selectedMonth =
+                                                _selectedMonths.first;
+                                          }
+                                        } else {
+                                          if (_selectedMonth != null) {
+                                            _selectedMonths = [_selectedMonth!];
+                                          }
+                                          _selectedMonth = null;
+                                        }
+                                      });
+                                    },
+                                    activeColor: const Color(0xFF1BA3A1),
+                                    materialTapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
+                        const SizedBox(height: 8),
+                        if (!_isMultiMonthMode)
+                          _buildDropdown<String>(
+                            label: '', // Label handled by row above
+                            value: _selectedMonth,
+                            items: _months
+                                .map((month) => DropdownMenuItem<String>(
+                                      value: month,
+                                      child: Text(month),
+                                    ))
+                                .toList(),
+                            onChanged: (newValue) {
+                              setState(() {
+                                _selectedMonth = newValue;
+                              });
+                            },
+                            hintText: _months[DateTime.now().month - 1],
+                          ),
+                        if (_isMultiMonthMode)
+                          Column(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: const Color(0xFF1BA3A1),
+                                    width: 1.0,
+                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          _selectedMonths.isEmpty
+                                              ? 'Select months'
+                                              : '${_selectedMonths.length} month(s) selected',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: _selectedMonths.isEmpty
+                                                ? Colors.grey.shade500
+                                                : Colors.black87,
+                                          ),
+                                        ),
+                                        if (_selectedMonths.isNotEmpty)
+                                          GestureDetector(
+                                            onTap: () {
+                                              setState(() {
+                                                _selectedMonths.clear();
+                                              });
+                                            },
+                                            child: Text(
+                                              'Clear',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: const Color(0xFF1BA3A1),
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Wrap(
+                                      spacing: 6,
+                                      runSpacing: 6,
+                                      children: _months.map((month) {
+                                        final isSelected =
+                                            _selectedMonths.contains(month);
+                                        return GestureDetector(
+                                          onTap: () {
+                                            setState(() {
+                                              if (isSelected) {
+                                                _selectedMonths.remove(month);
+                                              } else {
+                                                _selectedMonths.add(month);
+                                              }
+                                            });
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 6,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: isSelected
+                                                  ? const Color(0xFF1BA3A1)
+                                                  : Colors.grey[100],
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                              border: Border.all(
+                                                color: isSelected
+                                                    ? const Color(0xFF1BA3A1)
+                                                    : Colors.grey[300]!,
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              month.substring(0,
+                                                  3), // Show abbreviated month
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: isSelected
+                                                    ? Colors.white
+                                                    : Colors.grey[700],
+                                                fontWeight: isSelected
+                                                    ? FontWeight.w600
+                                                    : FontWeight.w400,
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      }).toList(),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         const SizedBox(height: 16),
                         Row(
                           children: [
@@ -1840,7 +2363,7 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
                         ),
                         const SizedBox(height: 24),
                         ElevatedButton(
-                          onPressed: _recordPayment,
+                          onPressed: _isLoading ? null : _recordPayment,
                           style: ElevatedButton.styleFrom(
                             foregroundColor: Colors.white,
                             backgroundColor: const Color(0xff1BA3A1),
@@ -1851,7 +2374,16 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
                             textStyle: const TextStyle(
                                 fontSize: 16, fontWeight: FontWeight.w600),
                           ),
-                          child: const Text('Submit'),
+                          child: _isLoading
+                              ? const SizedBox(
+                                  height: 24,
+                                  width: 24,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('Submit'),
                         ),
                       ],
                     );
@@ -1908,7 +2440,7 @@ class PaymentHistoryList extends StatelessWidget {
       'October',
       'November',
       'December',
-    ].sublist(0, year == currentYear ? currentMonth : 12);
+    ].toList();
 
     // Query paymentStatus for the selected year
     Query<Map<String, dynamic>> query = FirebaseFirestore.instance

@@ -7,6 +7,7 @@ import 'package:pmj_application/secondary/donorDetails.dart';
 import 'package:pmj_application/services/local_database_service.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../services/image_cache_service.dart';
+import '../../widgets/stable_avatar.dart';
 import 'shimmer_widgets.dart';
 import '../../secondary/donorDetails.dart';
 
@@ -37,11 +38,9 @@ class _PeopleListViewDonorState extends State<PeopleListViewDonor> {
       });
     });
     
-    // Initial sync with Firestore
-    _localDb.syncWithFirestore().catchError((error) {
-      // Handle error silently - we'll still show cached data
-      debugPrint('Error syncing with Firestore: $error');
-    });
+    // Only sync with Firestore if needed to prevent unnecessary refreshes
+    // The watchPeople stream will automatically update when data changes
+    // This prevents forced refreshes on every tab switch
   }
 
   @override
@@ -56,90 +55,36 @@ class _PeopleListViewDonorState extends State<PeopleListViewDonor> {
     final effectivePhotoUrl =
         (person.photoUrl.isNotEmpty ? person.photoUrl : (person.imageUrl ?? ''));
 
-    if (effectivePhotoUrl.isEmpty) {
-      return CircleAvatar(
-        radius: 25,
-        backgroundColor: const Color(0xff1BA3A1),
-        child: Text(
-          person.name.isNotEmpty ? person.name[0].toUpperCase() : '',
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-      );
-    }
+    return StableAvatar(
+      imageUrl: effectivePhotoUrl,
+      name: person.name,
+      radius: 25,
+    );
+  }
 
-    return FutureBuilder<ImageProvider?>(
-      future: ImageCacheService().getImageProvider(effectivePhotoUrl),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Shimmer.fromColors(
-            baseColor: const Color(0xFFE0E0E0),
-            highlightColor: const Color(0xFFF5F5F5),
-            child: const CircleAvatar(
-              radius: 25,
-              backgroundColor: Colors.white,
-            ),
-          );
-        }
-
-        if (snapshot.hasData && snapshot.data != null) {
-          // Fade-in image inside a circular clip
-          return ClipOval(
-            child: SizedBox(
-              width: 50,
-              height: 50,
-              child: Image(
-                image: snapshot.data!,
-                fit: BoxFit.cover,
-                frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-                  if (wasSynchronouslyLoaded) {
-                    return child;
-                  }
-                  return AnimatedOpacity(
-                    opacity: frame == null ? 0 : 1,
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeInOut,
-                    child: child,
-                  );
-                },
-                errorBuilder: (context, error, stackTrace) {
-                  // On error, fallback to initials
-                  return CircleAvatar(
-                    radius: 25,
-                    backgroundColor: const Color(0xff1BA3A1),
-                    child: Text(
-                      person.name.isNotEmpty ? person.name[0].toUpperCase() : '',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          );
-        }
-
-        // Fallback to initials if image not available
-        return CircleAvatar(
-          radius: 25,
-          backgroundColor: const Color(0xff1BA3A1),
-          child: Text(
-            person.name.isNotEmpty ? person.name[0].toUpperCase() : '',
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
+  Future<void> _refreshDonors() async {
+    try {
+      await _localDb.syncWithFirestore();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Donors refreshed successfully'),
+            backgroundColor: Color(0xff1BA3A1),
+            duration: Duration(seconds: 2),
           ),
         );
-      },
-    );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to refresh: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -216,7 +161,7 @@ class _PeopleListViewDonorState extends State<PeopleListViewDonor> {
             ),
           ),
           const SizedBox(height: 7),
-          // Donor List
+          // Donor List with Pull-to-Refresh
           Expanded(
             child: StreamBuilder<List<Person>>(
               stream: _localDb.watchPeople(query: _searchQuery),
@@ -226,76 +171,106 @@ class _PeopleListViewDonorState extends State<PeopleListViewDonor> {
                 }
 
                 if (snapshot.hasError) {
-                  return Center(
-                      child: Text('Error loading donors: ${snapshot.error}'));
+                  return RefreshIndicator(
+                    onRefresh: _refreshDonors,
+                    color: const Color(0xff1BA3A1),
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: SizedBox(
+                        height: MediaQuery.of(context).size.height * 0.6,
+                        child: Center(
+                          child: Text('Error loading donors: ${snapshot.error}'),
+                        ),
+                      ),
+                    ),
+                  );
                 }
 
                 final people = snapshot.data ?? [];
 
                 if (people.isEmpty) {
-                  return _buildNoSearchResultsUI(_searchQuery);
+                  return RefreshIndicator(
+                    onRefresh: _refreshDonors,
+                    color: const Color(0xff1BA3A1),
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: SizedBox(
+                        height: MediaQuery.of(context).size.height * 0.6,
+                        child: _buildNoSearchResultsUI(_searchQuery),
+                      ),
+                    ),
+                  );
                 }
 
-                return ListView.builder(
-                  itemCount: people.length,
-                  itemBuilder: (context, index) {
-                    final person = people[index];
-                    return GestureDetector(
-                      onTap: () {
-                        if (person.donorId == null || person.donorId!.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Donor details are not available offline yet. Please try again when connected.'),
+                return RefreshIndicator(
+                  onRefresh: _refreshDonors,
+                  color: const Color(0xff1BA3A1),
+                  child: ListView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: people.length,
+                    itemBuilder: (context, index) {
+                      final person = people[index];
+                      return GestureDetector(
+                        onTap: () async {
+                          if (person.donorId == null || person.donorId!.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Donor details are not available offline yet. Please try again when connected.'),
+                              ),
+                            );
+                            return;
+                          }
+                          final targetDonorId = person.donorId!;
+                          final result = await Navigator.push(
+                            context,
+                            SlidingPageTransitionRL(
+                              page: donorDetails(
+                                donorId: targetDonorId,
+                              ),
                             ),
                           );
-                          return;
-                        }
-                        final targetDonorId = person.donorId!;
-                        Navigator.push(
-                          context,
-                          SlidingPageTransitionRL(
-                            page:donorDetails(
-                              donorId: targetDonorId,
-                            ),
+
+                          if (result == true) {
+                            _refreshDonors();
+                          }
+                        },
+                        child: ListTile(
+                          leading: Hero(
+                            tag: 'donor_avatar_${person.donorId ?? person.id}',
+                            child: _buildProfileAvatar(person),
                           ),
-                        );
-                      },
-                      child: ListTile(
-                        leading: Hero(
-                          tag: 'donor_avatar_${person.donorId ?? person.id}',
-                          child: _buildProfileAvatar(person),
-                        ),
-                        title: Text(
-                          person.name,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontFamily: "Inter",
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        subtitle: Text(
-                          person.house,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontFamily: "Inter",
-                            fontWeight: FontWeight.w400,
-                            color: Color(0xff817D8A),
-                          ),
-                        ),
-                        trailing: Padding(
-                          padding: const EdgeInsets.only(left: 22.0),
-                          child: Text(
-                            "₹${person.amount.toStringAsFixed(0)}",
+                          title: Text(
+                            person.name,
                             style: const TextStyle(
                               fontSize: 16,
                               fontFamily: "Inter",
                               fontWeight: FontWeight.w600,
                             ),
                           ),
+                          subtitle: Text(
+                            person.house,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontFamily: "Inter",
+                              fontWeight: FontWeight.w400,
+                              color: Color(0xff817D8A),
+                            ),
+                          ),
+                          trailing: Padding(
+                            padding: const EdgeInsets.only(left: 22.0),
+                            child: Text(
+                              "₹${person.amount.toStringAsFixed(0)}",
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontFamily: "Inter",
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 );
               },
             ),

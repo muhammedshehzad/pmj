@@ -3,7 +3,6 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:isar/isar.dart';
 import '../models/person_model.dart';
 import '../services/local_database_service.dart';
 
@@ -16,7 +15,6 @@ class DonationsProvider extends ChangeNotifier {
   QuerySnapshot? _latestSnapshot;
   bool _hasInitialData = false;
   StreamSubscription<QuerySnapshot>? _donationsSubscription;
-  late Isar _isar;
   bool _isInitialized = false;
 
   List<Person> get donations => _donations;
@@ -36,7 +34,6 @@ class DonationsProvider extends ChangeNotifier {
       
       // Initialize local database
       await _localDb.init();
-      _isar = await _localDb.isar;
       
       // Initial sync with Firestore
       await _localDb.syncWithFirestore();
@@ -140,11 +137,9 @@ class DonationsProvider extends ChangeNotifier {
     if (!_isInitialized) return;
     
     try {
-      final isar = await _localDb.isar;
-      final cachedDonations = await isar.persons
-          .where()
-          .sortByTimestampDesc()
-          .findAll();
+      // Use the watchPeople stream to get cached donations
+      final cachedDonationsStream = _localDb.watchPeople();
+      final cachedDonations = await cachedDonationsStream.first;
           
       if (cachedDonations.isNotEmpty) {
         _donations = cachedDonations;

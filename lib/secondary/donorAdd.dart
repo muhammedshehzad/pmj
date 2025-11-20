@@ -324,7 +324,7 @@ class _DonorAddState extends State<DonorAdd> {
                               obscureText: false,
                               keyboardType: TextInputType.name,
                               decoration: const InputDecoration(
-                                hintText: 'Faisal Tk',
+                                hintText: 'Enter full name',
                                 hintStyle: TextStyle(
                                     fontSize: 12, color: Color(0xffA7A4AD)),
                                 enabledBorder: OutlineInputBorder(
@@ -351,7 +351,7 @@ class _DonorAddState extends State<DonorAdd> {
                               obscureText: false,
                               keyboardType: TextInputType.number,
                               decoration: const InputDecoration(
-                                hintText: '9846338560',
+                                hintText: 'Enter mobile number',
                                 hintStyle: TextStyle(
                                     fontSize: 12, color: Color(0xffA7A4AD)),
                                 enabledBorder: OutlineInputBorder(
@@ -379,7 +379,7 @@ class _DonorAddState extends State<DonorAdd> {
                               obscureText: false,
                               keyboardType: TextInputType.name,
                               decoration: const InputDecoration(
-                                hintText: 'Khair House, Abc Town, Kerala, 678541',
+                                hintText: 'Enter complete address',
                                 hintStyle: TextStyle(
                                     fontSize: 12, color: Color(0xffA7A4AD)),
                                 enabledBorder: OutlineInputBorder(
@@ -406,7 +406,7 @@ class _DonorAddState extends State<DonorAdd> {
                               obscureText: false,
                               keyboardType: TextInputType.number,
                               decoration: const InputDecoration(
-                                hintText: '5000',
+                                hintText: 'Enter monthly amount',
                                 hintStyle: TextStyle(
                                     fontSize: 12, color: Color(0xffA7A4AD)),
                                 enabledBorder: OutlineInputBorder(

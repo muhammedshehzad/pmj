@@ -7,68 +7,95 @@ import 'package:pmj_application/services/local_database_service.dart';
 Future<bool> showLogoutConfirmation(BuildContext context) async {
   return await showDialog<bool>(
     context: context,
+    barrierDismissible: false,
     builder: (BuildContext dialogContext) {
       return AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+        title: const Text(
+          'Logout?',
+          textAlign: TextAlign.start,
+          style: TextStyle(
+            fontFamily: "Inter",
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF212121),
+            height: 1.3,
+          ),
+        ),
         content: const Text(
-          'Are you sure you want to log out?',
+          'Are you sure you want to log out? You will need to sign in again to access your account.',
+          textAlign: TextAlign.start,
           style: TextStyle(
             fontFamily: "Inter",
             fontWeight: FontWeight.w400,
             fontSize: 14,
+            color: Color(0xFF757575),
+            height: 1.5,
           ),
         ),
-        actions: <Widget>[
-          Container(
-            height: 26,
-            width: 80,
-            margin: const EdgeInsets.only(right: 4, bottom: 4),
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                foregroundColor: Colors.white,
-                backgroundColor: const Color(0xff29B6F6),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                elevation: 0,
-              ),
-              child: const Text(
-                'Cancel',
-                style: TextStyle(
-                  fontFamily: "Inter",
-                  fontWeight: FontWeight.w600,
-                  fontSize: 9,
-                ),
-              ),
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-            ),
-          ),
-          Container(
-            height: 26,
-            width: 80,
-            margin: const EdgeInsets.only(right: 4, bottom: 4),
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                foregroundColor: Colors.white,
-                backgroundColor: const Color(0xffF44336),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                elevation: 0,
-              ),
-              child: const Text(
-                'Logout',
-                style: TextStyle(
-                  fontFamily: "Inter",
-                  fontWeight: FontWeight.w600,
-                  fontSize: 9,
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    side: const BorderSide(
+                      color: Color(0xFFE0E0E0),
+                      width: 1.5,
+                    ),
+                    foregroundColor: const Color(0xFF616161),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(false);
+                  },
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(
+                      fontFamily: "Inter",
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
                 ),
               ),
-              onPressed: () async {
-                await _performLogout(dialogContext);
-              },
-            ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    backgroundColor: const Color(0xFFD32F2F),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shadowColor: Colors.transparent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onPressed: () async {
+                    await _performLogout(dialogContext);
+                  },
+                  child: const Text(
+                    'Logout',
+                    style: TextStyle(
+                      fontFamily: "Inter",
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       );

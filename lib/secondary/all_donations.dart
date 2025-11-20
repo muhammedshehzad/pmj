@@ -113,6 +113,8 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
     _donationsSubscription?.cancel();
     _loadingController.close();
     _searchController.dispose();
+    // Ensure any pending debounced callbacks are cancelled to avoid calling setState after dispose
+    _searchDebounce?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
@@ -167,6 +169,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
   Future<void> _processPaginatedDocs(QuerySnapshot snapshot,
       {required bool isInitial}) async {
     if (snapshot.docs.isEmpty) {
+      if (!mounted) return;
       setState(() {
         _hasMore = false;
         _isPaginating = false;
@@ -222,6 +225,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
         ));
       }
     }
+    if (!mounted) return;
     setState(() {
       _paginatedDonations.addAll(newDonations);
       _lastDocument = snapshot.docs.last;
@@ -324,9 +328,11 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
                       );
                     }
                   },
+                  color: Colors.white,
                   itemBuilder: (context) => [
                     PopupMenuItem<String>(
                       value: 'history',
+
                       child: Row(
                         children: const [
                           Icon(Icons.history, size: 18, color: Color(0xff1BA3A1)),
@@ -430,6 +436,45 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
     );
   }
 
+  Future<void> _refreshDonations() async {
+    try {
+      // Reset pagination state and refresh data
+      setState(() {
+        _isPaginating = false;
+        _hasMore = true;
+        _paginatedDonations.clear();
+        _lastDocument = null;
+        _initialLoading = true;
+        _isSearching = false;
+        _searchResults.clear();
+        _searchFilter = '';
+        _searchController.clear();
+      });
+      
+      await _fetchInitialDonations();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Donations refreshed successfully'),
+            backgroundColor: Color(0xff1BA3A1),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to refresh: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildDonationsList() {
     if (_initialLoading && !_isSearching) {
       return _DonationsShimmerList();
@@ -458,102 +503,127 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
       if (_searchPaginating || _searchPriming) {
         return _DonationsShimmerList();
       }
-      return _buildNoSearchResultsUI(query: _searchFilter);
+      return RefreshIndicator(
+        onRefresh: _refreshDonations,
+        color: const Color(0xff1BA3A1),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.6,
+            child: _buildNoSearchResultsUI(query: _searchFilter),
+          ),
+        ),
+      );
     }
     if (!_isSearching && items.isEmpty) {
       // No donations at all
-      return _buildEmptyStateUI();
+      return RefreshIndicator(
+        onRefresh: _refreshDonations,
+        color: const Color(0xff1BA3A1),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.6,
+            child: _buildEmptyStateUI(),
+          ),
+        ),
+      );
     }
 
     final extraCount = (showLoader || showEndIndicator) ? 1 : 0;
-    return ListView.builder(
-      controller: _scrollController,
-      itemCount: items.length + extraCount,
-      itemBuilder: (context, index) {
-        if (index == items.length) {
-          if (showLoader) return _BottomShimmerLoader();
-          if (showEndIndicator) return const _EndOfListIndicator();
-        }
-        final person = items[index];
-        return Dismissible(
-          key: Key(person.documentPath ??
-              '${person.donorId}_${person.date}_${person.amount}'),
-          direction: DismissDirection.endToStart,
-          background: Container(
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: 20.0),
-            margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
-            decoration: BoxDecoration(
-              color: Colors.red,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.delete,
-                  color: Colors.white,
-                  size: 24,
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Delete',
-                  style: TextStyle(
+    return RefreshIndicator(
+      onRefresh: _refreshDonations,
+      color: const Color(0xff1BA3A1),
+      child: ListView.builder(
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: items.length + extraCount,
+        itemBuilder: (context, index) {
+          if (index == items.length) {
+            if (showLoader) return _BottomShimmerLoader();
+            if (showEndIndicator) return const _EndOfListIndicator();
+          }
+          final person = items[index];
+          return Dismissible(
+            key: Key(person.documentPath ??
+                '${person.donorId}_${person.date}_${person.amount}'),
+            direction: DismissDirection.endToStart,
+            background: Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 20.0),
+              margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.delete,
                     color: Colors.white,
-                    fontSize: 12,
-                    fontFamily: "Inter",
-                    fontWeight: FontWeight.w500,
+                    size: 24,
                   ),
-                ),
-              ],
+                  SizedBox(height: 4),
+                  Text(
+                    'Delete',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontFamily: "Inter",
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          confirmDismiss: (direction) async {
-            return await _showDeleteConfirmation(context, person);
-          },
-          onDismissed: (direction) async {
-            // Optimistically remove from the currently displayed list to satisfy Dismissible contract
-            final removed = person;
-            final isSearchingNow = _isSearching;
-            // Identify which list is currently displayed and capture index for potential rollback
-            int removedIndex;
-            if (isSearchingNow) {
-              removedIndex = _searchResults
-                  .indexWhere((p) => p.documentPath == removed.documentPath);
-              if (removedIndex != -1) {
-                setState(() {
-                  _searchResults.removeAt(removedIndex);
-                });
-              }
-            } else {
-              removedIndex = _paginatedDonations
-                  .indexWhere((p) => p.documentPath == removed.documentPath);
-              if (removedIndex != -1) {
-                setState(() {
-                  _paginatedDonations.removeAt(removedIndex);
-                });
-              }
-            }
-
-            final success = await _handleDonationDeletion(removed);
-            if (!success && removedIndex != -1) {
-              // Rollback on failure
-              if (!mounted) return;
-              setState(() {
-                if (isSearchingNow) {
-                  _searchResults.insert(removedIndex, removed);
-                } else {
-                  _paginatedDonations.insert(removedIndex, removed);
+            confirmDismiss: (direction) async {
+              return await _showDeleteConfirmation(context, person);
+            },
+            onDismissed: (direction) async {
+              // Optimistically remove from the currently displayed list to satisfy Dismissible contract
+              final removed = person;
+              final isSearchingNow = _isSearching;
+              // Identify which list is currently displayed and capture index for potential rollback
+              int removedIndex;
+              if (isSearchingNow) {
+                removedIndex = _searchResults
+                    .indexWhere((p) => p.documentPath == removed.documentPath);
+                if (removedIndex != -1) {
+                  setState(() {
+                    _searchResults.removeAt(removedIndex);
+                  });
                 }
-              });
-            }
-          },
-          child: _DonationListTile(
-            person: person,
-            onTap: () => _showPaymentDetailsDialog(context, person),
-          ),
-        );
-      },
+              } else {
+                removedIndex = _paginatedDonations
+                    .indexWhere((p) => p.documentPath == removed.documentPath);
+                if (removedIndex != -1) {
+                  setState(() {
+                    _paginatedDonations.removeAt(removedIndex);
+                  });
+                }
+              }
+
+              final success = await _handleDonationDeletion(removed);
+              if (!success && removedIndex != -1) {
+                // Rollback on failure
+                if (!mounted) return;
+                setState(() {
+                  if (isSearchingNow) {
+                    _searchResults.insert(removedIndex, removed);
+                  } else {
+                    _paginatedDonations.insert(removedIndex, removed);
+                  }
+                });
+              }
+            },
+            child: _DonationListTile(
+              person: person,
+              onTap: () => _showPaymentDetailsDialog(context, person),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -593,6 +663,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
 
       final snapshot = await query.get();
       if (snapshot.docs.isEmpty) {
+        if (!mounted) return;
         setState(() {
           _searchHasMore = false;
           _searchPaginating = false;
@@ -658,6 +729,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
         }
       }
 
+      if (!mounted) return;
       setState(() {
         // Stage results first
         _stagedSearchResults.addAll(pagePeople);
@@ -679,10 +751,12 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
       // If still searching and not enough items to fill, continue auto-fetch
       await _ensureSearchFilled();
     } catch (e) {
-      setState(() {
-        _searchPaginating = false;
-        _searchHasMore = false;
-      });
+      if (mounted) {
+        setState(() {
+          _searchPaginating = false;
+          _searchHasMore = false;
+        });
+      }
       // Optionally log error
       debugPrint('Search fetch error: $e');
     }
@@ -1606,75 +1680,92 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
           barrierDismissible: false,
           builder: (BuildContext dialogContext) {
             return AlertDialog(
+              backgroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(16),
               ),
-              title: Row(
-                children: [
-                  Icon(
-                    Icons.warning_amber_rounded,
-                    color: Colors.orange[600],
-                    size: 24,
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Confirm Deletion',
-                    style: TextStyle(
-                      fontFamily: "Inter",
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
+              contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+              actionsPadding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+              title: const Text(
+                'Delete Donation?',
+                textAlign: TextAlign.start,
+                style: TextStyle(
+                  fontFamily: "Inter",
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF212121),
+                  height: 1.3,
+                ),
               ),
               content: Text(
                 'Are you sure you want to delete this donation of ₹${person.amount} from ${person.name}?\n\nThis action cannot be undone.',
+                textAlign: TextAlign.start,
                 style: const TextStyle(
                   fontFamily: "Inter",
                   fontWeight: FontWeight.w400,
                   fontSize: 14,
+                  color: Color(0xFF757575),
+                  height: 1.5,
                 ),
               ),
-              actions: <Widget>[
-                TextButton(
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.grey[600],
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6),
+              actions: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: const BorderSide(
+                            color: Color(0xFFE0E0E0),
+                            width: 1.5,
+                          ),
+                          foregroundColor: const Color(0xFF616161),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        onPressed: () {
+                          Navigator.of(dialogContext).pop(false);
+                        },
+                        child: const Text(
+                          'Cancel',
+                          style: TextStyle(
+                            fontFamily: "Inter",
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                  child: const Text(
-                    'Cancel',
-                    style: TextStyle(
-                      fontFamily: "Inter",
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          backgroundColor: const Color(0xFFD32F2F),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shadowColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        onPressed: () {
+                          Navigator.of(dialogContext).pop(true);
+                        },
+                        child: const Text(
+                          'Delete',
+                          style: TextStyle(
+                            fontFamily: "Inter",
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                  onPressed: () {
-                    Navigator.of(dialogContext).pop(false);
-                  },
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    backgroundColor: Colors.red[600],
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: const Text(
-                    'Delete',
-                    style: TextStyle(
-                      fontFamily: "Inter",
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
-                  onPressed: () {
-                    Navigator.of(dialogContext).pop(true);
-                  },
+                  ],
                 ),
               ],
             );
