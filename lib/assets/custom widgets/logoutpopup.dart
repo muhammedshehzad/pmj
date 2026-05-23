@@ -3,6 +3,8 @@ import 'package:pmj_application/assets/custom%20widgets/transition.dart';
 import 'package:pmj_application/primary/login.dart';
 import 'package:pmj_application/secondary/user_service.dart';
 import 'package:pmj_application/services/local_database_service.dart';
+import 'package:pmj_application/services/permission_service.dart';
+import 'package:provider/provider.dart';
 
 Future<bool> showLogoutConfirmation(BuildContext context) async {
   return await showDialog<bool>(
@@ -106,23 +108,23 @@ Future<bool> showLogoutConfirmation(BuildContext context) async {
 
 Future<void> _performLogout(BuildContext context) async {
   final userService = UserService();
+  // Capture the Permissions provider before navigation tears the tree.
+  Permissions? perms;
   try {
-    // 1) Sign out from Firebase and clear login flag
+    perms = Provider.of<Permissions>(context, listen: false);
+  } catch (_) {/* not provided in this context — fine */}
+
+  try {
     await userService.signOut();
-
-    // 2) Clear all local data (Isar DB + image cache)
     await LocalDatabaseService().clearAllData();
+    perms?.clear();
 
-    // 3) Optionally clear Flutter's in-memory image cache
     // ignore: invalid_use_of_visible_for_testing_member, invalid_use_of_protected_member
     PaintingBinding.instance.imageCache.clear();
-
-    print('Logout completed: Firebase signed out, preferences cleared, local data cleared');
   } catch (e) {
-    print('Error during logout: $e');
+    debugPrint('Error during logout: $e');
   }
 
-  // Navigate to AuthScreens and remove all previous routes
   if (!context.mounted) return;
   Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
     '/login',

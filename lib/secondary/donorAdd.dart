@@ -206,7 +206,7 @@ class _DonorAddState extends State<DonorAdd> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xffFFFFFF),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Stack(
         children: [
           CustomScrollView(

@@ -70,7 +70,7 @@ Please pay using this link:
 
 Thank you for your continued support!
 
-- PMJ Team''';
+- Team PMJ''';
   }
 
   void _onScroll() {
@@ -222,7 +222,7 @@ Thank you for your continued support!
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xffFFFFFF),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(100),
         child: AppBar(
@@ -361,7 +361,7 @@ Thank you for your continued support!
                     margin: const EdgeInsets.all(16.0),
                     padding: const EdgeInsets.all(16.0),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: Theme.of(context).cardColor,
                       borderRadius: BorderRadius.circular(8),
                       boxShadow: [
                         BoxShadow(
@@ -447,7 +447,7 @@ Thank you for your continued support!
                               borderSide: const BorderSide(color: Color(0xff1BA3A1)),
                             ),
                             filled: true,
-                            fillColor: Colors.grey[50],
+                            fillColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E1E) : Colors.grey[50],
                             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                           ),
                           style: const TextStyle(fontSize: 14, fontFamily: "Inter"),
@@ -491,7 +491,7 @@ Thank you for your continued support!
                     Container(
                       margin: const EdgeInsets.symmetric(horizontal: 16.0),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: Theme.of(context).cardColor,
                         borderRadius: BorderRadius.circular(8),
                         boxShadow: [
                           BoxShadow(
@@ -633,7 +633,7 @@ Thank you for your continued support!
                     margin: const EdgeInsets.all(16.0),
                     padding: const EdgeInsets.all(16.0),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: Theme.of(context).cardColor,
                       borderRadius: BorderRadius.circular(8),
                       boxShadow: [
                         BoxShadow(
@@ -690,7 +690,7 @@ Thank you for your continued support!
                               fontFamily: "Inter",
                             ),
                             filled: true,
-                            fillColor: Colors.grey[50],
+                            fillColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E1E) : Colors.grey[50],
                             contentPadding: const EdgeInsets.all(12),
                           ),
                         ),
@@ -758,7 +758,7 @@ Thank you for your continued support!
                       margin: const EdgeInsets.all(16.0),
                       padding: const EdgeInsets.all(16.0),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: Theme.of(context).cardColor,
                         borderRadius: BorderRadius.circular(8),
                         boxShadow: [
                           BoxShadow(
@@ -793,7 +793,7 @@ Thank you for your continued support!
                       margin: const EdgeInsets.all(16.0),
                       padding: const EdgeInsets.all(16.0),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: Theme.of(context).cardColor,
                         borderRadius: BorderRadius.circular(8),
                         boxShadow: [
                           BoxShadow(

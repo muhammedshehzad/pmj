@@ -243,7 +243,7 @@ class _donorDetailsState extends State<donorDetails> {
       context: context,
       barrierDismissible: false,
       builder: (context) => Dialog(
-        backgroundColor: Colors.white,
+        backgroundColor: Theme.of(context).cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Container(
           padding: const EdgeInsets.all(24.0),
@@ -716,8 +716,8 @@ Total Amount Due: ₹${totalAmount.toStringAsFixed(0)}
 ${upiLink.isNotEmpty ? '\nPlease pay using this link:\n$upiLink\n' : ''}
 Thank you for your continued support!
 
-- PMJ Team''';
-      
+- Team PMJ''';
+
       // Clean phone number
       String cleanNumber = phoneNumber.replaceAll(RegExp(r'[^0-9+]'), '');
       
@@ -760,7 +760,7 @@ Thank you for your continued support!
       barrierDismissible: false, // Prevent accidental dismissal
       builder: (BuildContext context) {
         return AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: Theme.of(context).cardColor,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -776,7 +776,6 @@ Thank you for your continued support!
               fontFamily: "Inter",
               fontSize: 20,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF212121),
               height: 1.3,
             ),
           ),
@@ -788,7 +787,6 @@ Thank you for your continued support!
               fontFamily: "Inter",
               fontWeight: FontWeight.w400,
               fontSize: 14,
-              color: Color(0xFF757575),
               height: 1.5,
             ),
           ),
@@ -864,7 +862,7 @@ Thank you for your continued support!
   }  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xffFFFFFF),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: PreferredSize(
         preferredSize: Size.fromHeight(100),
         child: AppBar(
@@ -1310,30 +1308,32 @@ Thank you for your continued support!
                         Positioned(
                           top: 17,
                           right: 20,
-                          child: Container(
-                            width: 212,
-                            height: 30,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
+                          left: 130, // Leave space for avatar
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
                                   donorName,
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     fontSize: 16,
                                     fontFamily: "Inter",
                                     fontWeight: FontWeight.w600,
                                   ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                 ),
-                                Text(
-                                  '₹${donorAmount.toStringAsFixed(0)}',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontFamily: "Inter",
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '₹${donorAmount.toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontFamily: "Inter",
+                                  fontWeight: FontWeight.w600,
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
                         Positioned(
@@ -1591,7 +1591,7 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: Theme.of(context).cardColor,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
@@ -1669,7 +1669,7 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
         context: context,
         barrierDismissible: false,
         builder: (context) => AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: Theme.of(context).cardColor,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -1735,7 +1735,7 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
         context: context,
         barrierDismissible: false,
         builder: (context) => AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: Theme.of(context).cardColor,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -1847,6 +1847,32 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
             SetOptions(merge: true));
       }
 
+      // Fetch donor name for donation records
+      final donorSnapshot = await donorRef.get();
+      final donorName = donorSnapshot.data()?['name'] ?? 'Unknown';
+      final currentDate = DateFormat('dd MMM yyyy').format(DateTime.now());
+
+      // Also create donation documents in the main donations collection
+      for (String month in monthsToProcess) {
+        final donationData = {
+          'donorId': widget.donorId,
+          'donorName': donorName,
+          'amount': parsedAmount,
+          'month': month,
+          'year': _selectedYear,
+          'date': currentDate,
+          'method': _selectedPayment,
+          'status': 'approved', // Admin-recorded payments are automatically approved
+          'timestamp': FieldValue.serverTimestamp(),
+        };
+        
+        // Add to donations collection
+        batch.set(
+          FirebaseFirestore.instance.collection('donations').doc(),
+          donationData,
+        );
+      }
+
       await batch.commit();
 
       // Sync local cache so streams (e.g., Home recent donations) update immediately
@@ -1865,7 +1891,7 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
         context: context,
         barrierDismissible: false,
         builder: (context) => AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: Theme.of(context).cardColor,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -2056,10 +2082,10 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: Colors.black87,
+            color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87,
           ),
         ),
         const SizedBox(height: 8),
@@ -2083,8 +2109,8 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
               borderRadius: BorderRadius.circular(8),
             ),
           ),
-          style: const TextStyle(fontSize: 14, color: Colors.black87),
-          dropdownColor: Colors.white,
+          style: TextStyle(fontSize: 14, color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87),
+          dropdownColor: Theme.of(context).cardColor,
         ),
       ],
     );
@@ -2093,9 +2119,9 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: SafeArea(
         child: LayoutBuilder(

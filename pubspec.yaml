@@ -38,6 +38,10 @@ dependencies:
   url_launcher: ^6.2.4
   uuid: ^4.5.1
   hugeicons: ^0.0.7
+  firebase_messaging: ^14.7.9
+  pin_code_fields: ^8.0.1
+  flutter_typeahead: ^5.2.0
+
 
 dev_dependencies:
   flutter_test:

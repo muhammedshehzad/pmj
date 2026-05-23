@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-import '../secondary/auth_state_manager.dart';
+import '../donor_module/services/app_auth_router.dart';
+import '../services/permission_service.dart';
 
 
 class splashscreen extends StatefulWidget {
@@ -11,33 +13,51 @@ class splashscreen extends StatefulWidget {
 }
 
 class _HomeState extends State<splashscreen> {
-  final AuthStateManager _authStateManager = AuthStateManager();
+  final AppAuthRouter _authRouter = AppAuthRouter();
 
   @override
   void initState() {
     super.initState();
     _checkAuthAndNavigate();
   }
-  Future<void> _checkAuthAndNavigate() async {
-    // Initialize auth listener
-    _authStateManager.initAuthStateListener(context);
 
-    // Wait for splash animation or delay
+  Future<void> _checkAuthAndNavigate() async {
     await Future.delayed(const Duration(seconds: 2));
 
-    // Check auth state and get route
-    String route = await _authStateManager.checkAuthState();
+    final result = await _authRouter.determineRoute();
 
-    // Navigate to appropriate route
-    if (mounted) {
-      Navigator.pushReplacementNamed(context, route);
+    if (!mounted) return;
+
+    // Set permissions before navigating so the destination has correct role,
+    // then bind to the live Firestore doc so future role changes take effect
+    // without requiring re-login.
+    final perms = context.read<Permissions>();
+    perms.setRole(result.role);
+    if (result.role != 'none') {
+      perms.bindToCurrentUser();
+    }
+
+    Navigator.pushReplacementNamed(context, result.route);
+
+    if (result.message != null) {
+      // Show after navigation completes — give the new route a frame to mount.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ctx = Navigator.of(context, rootNavigator: true).context;
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(result.message!),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFFFFFFFF),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Center(
         child: Hero(
           tag: 'hero-tag',

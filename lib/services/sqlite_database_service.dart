@@ -43,7 +43,7 @@ class SQLiteDatabaseService {
 
       _database = await openDatabase(
         path,
-        version: 1,
+        version: 2,
         onCreate: (db, version) async {
           // Create persons table
           await db.execute('''
@@ -61,7 +61,11 @@ class SQLiteDatabaseService {
               method TEXT,
               status TEXT,
               imageUrl TEXT,
-              timestamp INTEGER
+              timestamp INTEGER,
+              monthsList TEXT,
+              totalDonationAmount REAL,
+              isMainEntry INTEGER,
+              hideFromHistory INTEGER
             )
           ''');
 
@@ -86,6 +90,14 @@ class SQLiteDatabaseService {
           await db.execute('CREATE INDEX idx_persons_donorId ON persons(donorId)');
           await db.execute('CREATE INDEX idx_persons_name ON persons(name)');
           await db.execute('CREATE INDEX idx_persons_timestamp ON persons(timestamp)');
+        },
+        onUpgrade: (db, oldVersion, newVersion) async {
+          if (oldVersion < 2) {
+            await db.execute('ALTER TABLE persons ADD COLUMN monthsList TEXT');
+            await db.execute('ALTER TABLE persons ADD COLUMN totalDonationAmount REAL');
+            await db.execute('ALTER TABLE persons ADD COLUMN isMainEntry INTEGER');
+            await db.execute('ALTER TABLE persons ADD COLUMN hideFromHistory INTEGER');
+          }
         },
       );
 
@@ -209,7 +221,7 @@ class SQLiteDatabaseService {
         final donations = donationMaps.map((map) => Donation(
           name: (map['name'] as String?) ?? '',
           date: (map['date'] as String?) ?? '',
-          amount: (map['amount'] as num?)?.toInt() ?? 0,
+          amount: (map['amount'] as num?)?.toDouble() ?? 0,
           donorId: (map['donorId'] as String?) ?? '',
           method: (map['method'] as String?) ?? '',
           month: (map['month'] as String?) ?? '',
@@ -224,10 +236,16 @@ class SQLiteDatabaseService {
             }
             return imageUrl ?? '';
           }(),
+          monthsList: map['monthsList'] != null && (map['monthsList'] as String).isNotEmpty
+              ? (map['monthsList'] as String).split(',')
+              : null,
+          totalDonationAmount: (map['totalDonationAmount'] as num?)?.toDouble(),
+          isMainEntry: map['isMainEntry'] == 1,
+          hideFromHistory: map['hideFromHistory'] == 1,
         )).toList();
         
         if (!_donationsController.isClosed) {
-          _donationsController.add(donations);
+          _donationsController.add(List<Donation>.from(donations));
         }
 
         // Fetch and emit people
@@ -248,6 +266,12 @@ class SQLiteDatabaseService {
           timestamp: map['timestamp'] != null 
               ? DateTime.fromMillisecondsSinceEpoch(map['timestamp'] as int)
               : null,
+          monthsList: map['monthsList'] != null && (map['monthsList'] as String).isNotEmpty
+              ? (map['monthsList'] as String).split(',')
+              : null,
+          totalDonationAmount: (map['totalDonationAmount'] as num?)?.toDouble(),
+          isMainEntry: map['isMainEntry'] == 1,
+          hideFromHistory: map['hideFromHistory'] == 1,
         )).toList();
         final processedPeople = _processPeople(people, '');
         
@@ -408,6 +432,10 @@ class SQLiteDatabaseService {
             'status': data['status']?.toString() ?? 'paid',
             'imageUrl': donorData['imageUrl']?.toString(),
             'timestamp': timestamp.millisecondsSinceEpoch,
+            'monthsList': data['monthsList'] != null ? (data['monthsList'] as List).join(',') : null,
+            'totalDonationAmount': (data['totalDonationAmount'] as num?)?.toDouble() ?? _parseAmount(data['amount']).toDouble(),
+            'isMainEntry': data['isMainEntry'] == true ? 1 : 0,
+            'hideFromHistory': data['hideFromHistory'] == true ? 1 : 0,
           };
 
           await db.insert('persons', paymentRecord);
@@ -473,8 +501,21 @@ class SQLiteDatabaseService {
         final existing = unique[donorKey]!;
         final existingTs = existing.timestamp ?? DateTime.fromMillisecondsSinceEpoch(0);
         final currentTs = p.timestamp ?? DateTime.fromMillisecondsSinceEpoch(0);
+        
+        // Preserve the base amount from the actual donor profile (timestamp 0 or status unpaid)
+        double baseAmount = existing.amount;
+        if (p.status == 'unpaid' || p.timestamp?.millisecondsSinceEpoch == 0) {
+          baseAmount = p.amount;
+        } else if (existing.status == 'unpaid' || existing.timestamp?.millisecondsSinceEpoch == 0) {
+          baseAmount = existing.amount;
+        }
+
         if (currentTs.isAfter(existingTs)) {
+          p.amount = baseAmount;
           unique[donorKey] = p;
+        } else {
+          existing.amount = baseAmount;
+          unique[donorKey] = existing;
         }
       }
     }
@@ -527,6 +568,10 @@ class SQLiteDatabaseService {
       'status': person.status,
       'imageUrl': person.imageUrl,
       'timestamp': person.timestamp?.millisecondsSinceEpoch,
+      'monthsList': person.monthsList?.join(','),
+      'totalDonationAmount': person.totalDonationAmount,
+      'isMainEntry': person.isMainEntry == true ? 1 : 0,
+      'hideFromHistory': person.hideFromHistory == true ? 1 : 0,
     };
 
     await db.insert(

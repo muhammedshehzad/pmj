@@ -96,7 +96,7 @@ class _UpiConfigScreenState extends State<UpiConfigScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xffFFFFFF),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(100),
         child: AppBar(
@@ -283,7 +283,7 @@ class _UpiConfigScreenState extends State<UpiConfigScreen> {
                                 color: Color(0xff1BA3A1),
                               ),
                               filled: true,
-                              fillColor: Colors.grey[50],
+                              fillColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E1E) : Colors.grey[50],
                             ),
                             validator: (value) {
                               if (value == null || value.trim().isEmpty) {
@@ -331,7 +331,7 @@ class _UpiConfigScreenState extends State<UpiConfigScreen> {
                                 color: Color(0xff1BA3A1),
                               ),
                               filled: true,
-                              fillColor: Colors.grey[50],
+                              fillColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E1E) : Colors.grey[50],
                             ),
                             validator: (value) {
                               if (value == null || value.trim().isEmpty) {

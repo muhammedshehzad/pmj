@@ -4,14 +4,18 @@ class Donation {
   final String name;
   
   final String date;
-  final int amount;
+  final double amount;
   final String donorId;
   final String method;
   final String month;
   final String year;
   final String status;
+  final List<String>? monthsList;
   final String? documentPath;
   final String? imageUrl;
+  final double? totalDonationAmount;
+  final bool? isMainEntry;
+  final bool? hideFromHistory;
 
   Donation({
     this.id,
@@ -23,23 +27,31 @@ class Donation {
     required this.month,
     required this.year,
     required this.status,
+    this.monthsList,
     this.documentPath,
     this.imageUrl,
+    this.totalDonationAmount,
+    this.isMainEntry,
+    this.hideFromHistory,
   });
 
   // Factory method to create a Donation from Firestore data
   factory Donation.fromFirestore(Map<String, dynamic> data) {
     return Donation(
-      name: data['name'] ?? 'Unknown',
+      name: data['name'] ?? data['donorName'] ?? 'Unknown',
       date: data['date'] ?? '',
-      amount: (data['amount'] as num?)?.toInt() ?? 0,
+      amount: (data['amount'] as num?)?.toDouble() ?? 0.0,
       donorId: data['donorId'] ?? '',
       method: data['method'] ?? '',
       month: data['month'] ?? '',
       year: data['year'] ?? '',
       status: data['status'] ?? '',
+      monthsList: data['monthsList'] != null ? List<String>.from(data['monthsList']) : null,
       documentPath: data['documentPath'],
       imageUrl: data['imageUrl'],
+      totalDonationAmount: (data['totalDonationAmount'] as num?)?.toDouble(),
+      isMainEntry: data['isMainEntry'] as bool?,
+      hideFromHistory: data['hideFromHistory'] as bool?,
     );
   }
 
@@ -54,23 +66,30 @@ class Donation {
       'month': month,
       'year': year,
       'status': status,
+      'monthsList': monthsList,
       'documentPath': documentPath,
       'imageUrl': imageUrl,
+      if (totalDonationAmount != null) 'totalDonationAmount': totalDonationAmount,
+      if (isMainEntry != null) 'isMainEntry': isMainEntry,
+      if (hideFromHistory != null) 'hideFromHistory': hideFromHistory,
     };
   }
 
-  // Create a copy of the donation with optional updates
   Donation copyWith({
     String? name,
     String? date,
-    int? amount,
+    double? amount,
     String? donorId,
     String? method,
     String? month,
     String? year,
     String? status,
+    List<String>? monthsList,
     String? documentPath,
     String? imageUrl,
+    double? totalDonationAmount,
+    bool? isMainEntry,
+    bool? hideFromHistory,
   }) {
     return Donation(
       id: id,
@@ -82,8 +101,12 @@ class Donation {
       month: month ?? this.month,
       year: year ?? this.year,
       status: status ?? this.status,
+      monthsList: monthsList ?? this.monthsList,
       documentPath: documentPath ?? this.documentPath,
       imageUrl: imageUrl ?? this.imageUrl,
+      totalDonationAmount: totalDonationAmount ?? this.totalDonationAmount,
+      isMainEntry: isMainEntry ?? this.isMainEntry,
+      hideFromHistory: hideFromHistory ?? this.hideFromHistory,
     );
   }
 }

@@ -20,8 +20,12 @@ class StatsShimmer extends StatelessWidget {
       ),
       width: MediaQuery.of(context).size.width,
       child: Shimmer.fromColors(
-        baseColor: const Color(0xFFE0E0E0),
-        highlightColor: const Color(0xFFF5F5F5),
+        baseColor: Theme.of(context).brightness == Brightness.dark
+            ? Colors.grey[800]!
+            : const Color(0xFFE0E0E0),
+        highlightColor: Theme.of(context).brightness == Brightness.dark
+            ? Colors.grey[700]!
+            : const Color(0xFFF5F5F5),
         child: Column(
           children: [
             const SizedBox(height: 15),
@@ -29,7 +33,7 @@ class StatsShimmer extends StatelessWidget {
               width: 60,
               height: 14,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white,
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
@@ -54,8 +58,9 @@ class StatsShimmer extends StatelessWidget {
 class _StatBlock extends StatelessWidget {
   final double width1;
   final double width2;
+
   const _StatBlock({this.width1 = 30, this.width2 = 50});
-  
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -64,7 +69,7 @@ class _StatBlock extends StatelessWidget {
           width: width1,
           height: 10,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white,
             borderRadius: BorderRadius.circular(4),
           ),
         ),
@@ -73,7 +78,7 @@ class _StatBlock extends StatelessWidget {
           width: width2,
           height: 19,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white,
             borderRadius: BorderRadius.circular(4),
           ),
         ),
@@ -84,7 +89,7 @@ class _StatBlock extends StatelessWidget {
 
 class _DividerLine extends StatelessWidget {
   const _DividerLine();
-  
+
   @override
   Widget build(BuildContext context) {
     return Container(width: 1, color: Colors.grey[400], height: 50);
@@ -96,8 +101,12 @@ class DonationListShimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Shimmer.fromColors(
-      baseColor: const Color(0xFFE0E0E0),
-      highlightColor: const Color(0xFFF5F5F5),
+      baseColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey[800]!
+          : const Color(0xFFE0E0E0),
+      highlightColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey[700]!
+          : const Color(0xFFF5F5F5),
       child: ListView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -107,7 +116,7 @@ class DonationListShimmer extends StatelessWidget {
             margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: Colors.grey[200]!),
             ),
@@ -123,7 +132,9 @@ class DonationListShimmer extends StatelessWidget {
                         width: double.infinity,
                         height: 16,
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey[900]
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
@@ -132,7 +143,9 @@ class DonationListShimmer extends StatelessWidget {
                         width: 100,
                         height: 12,
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey[900]
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
@@ -141,18 +154,23 @@ class DonationListShimmer extends StatelessWidget {
                         width: 80,
                         height: 12,
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey[900]
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(width: 8),
                 Container(
-                  width: 60,
+                  width: 50,
                   height: 20,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey[900]
+                        : Colors.white,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -174,8 +192,12 @@ class DonorListShimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Shimmer.fromColors(
-      baseColor: const Color(0xFFE0E0E0),
-      highlightColor: const Color(0xFFF5F5F5),
+      baseColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey[800]!
+          : const Color(0xFFE0E0E0),
+      highlightColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey[700]!
+          : const Color(0xFFF5F5F5),
       child: ListView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -185,15 +207,17 @@ class DonorListShimmer extends StatelessWidget {
           return Container(
             margin: const EdgeInsets.symmetric(vertical: 6),
             child: ListTile(
-              leading: const CircleAvatar(
+              leading: CircleAvatar(
                 radius: 25,
-                backgroundColor: Colors.white,
+                backgroundColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white,
               ),
               title: Container(
                 height: 16,
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.grey[900]
+                      : Colors.white,
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
@@ -202,7 +226,9 @@ class DonorListShimmer extends StatelessWidget {
                 width: 120,
                 margin: const EdgeInsets.only(top: 6),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.grey[900]
+                      : Colors.white,
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
@@ -210,7 +236,9 @@ class DonorListShimmer extends StatelessWidget {
                 width: 60,
                 height: 20,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.grey[900]
+                      : Colors.white,
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
@@ -231,8 +259,12 @@ class PaymentsFormShimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Shimmer.fromColors(
-      baseColor: const Color(0xFFE0E0E0),
-      highlightColor: const Color(0xFFF5F5F5),
+      baseColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey[800]!
+          : const Color(0xFFE0E0E0),
+      highlightColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey[700]!
+          : const Color(0xFFF5F5F5),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -243,45 +275,53 @@ class PaymentsFormShimmer extends StatelessWidget {
               height: 20,
               width: 150,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white,
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
             const SizedBox(height: 20),
-            
+
             // Form fields
-            ...List.generate(5, (index) => Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  height: 12,
-                  width: 100 + (index * 20.0),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  height: 48,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.grey[300]!),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-            )),
-            
+            ...List.generate(
+                5,
+                (index) => Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          height: 12,
+                          width: 100 + (index * 20.0),
+                          decoration: BoxDecoration(
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.grey[900]
+                                    : Colors.white,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          height: 48,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.grey[900]
+                                    : Colors.white,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: Colors.grey[300]!),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                    )),
+
             // Payment status grid
             const SizedBox(height: 20),
             Container(
               height: 12,
               width: 120,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white,
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
@@ -299,7 +339,9 @@ class PaymentsFormShimmer extends StatelessWidget {
               itemBuilder: (context, index) {
                 return Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey[900]
+                        : Colors.white,
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(color: Colors.grey[300]!),
                   ),
@@ -310,7 +352,9 @@ class PaymentsFormShimmer extends StatelessWidget {
                         height: 8,
                         width: 30,
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey[900]
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
@@ -319,7 +363,9 @@ class PaymentsFormShimmer extends StatelessWidget {
                         height: 6,
                         width: 40,
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey[900]
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
@@ -344,8 +390,12 @@ class DonorDetailsShimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Shimmer.fromColors(
-      baseColor: const Color(0xFFE0E0E0),
-      highlightColor: const Color(0xFFF5F5F5),
+      baseColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey[800]!
+          : const Color(0xFFE0E0E0),
+      highlightColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey[700]!
+          : const Color(0xFFF5F5F5),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -354,9 +404,9 @@ class DonorDetailsShimmer extends StatelessWidget {
             // Profile section
             Row(
               children: [
-                const CircleAvatar(
+                CircleAvatar(
                   radius: 40,
-                  backgroundColor: Colors.white,
+                  backgroundColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white,
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -367,7 +417,9 @@ class DonorDetailsShimmer extends StatelessWidget {
                         height: 20,
                         width: double.infinity,
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey[900]
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
@@ -376,7 +428,9 @@ class DonorDetailsShimmer extends StatelessWidget {
                         height: 14,
                         width: 120,
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey[900]
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
@@ -385,7 +439,9 @@ class DonorDetailsShimmer extends StatelessWidget {
                         height: 14,
                         width: 160,
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey[900]
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
@@ -395,19 +451,19 @@ class DonorDetailsShimmer extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 24),
-            
+
             // Year selector
             Container(
               height: 48,
               width: double.infinity,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white,
                 borderRadius: BorderRadius.circular(4),
                 border: Border.all(color: Colors.grey[300]!),
               ),
             ),
             const SizedBox(height: 16),
-            
+
             // Payment status table
             Expanded(
               child: ListView.builder(
@@ -419,7 +475,9 @@ class DonorDetailsShimmer extends StatelessWidget {
                     margin: const EdgeInsets.symmetric(vertical: 4),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.grey[900]
+                          : Colors.white,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: Colors.grey[300]!),
                     ),
@@ -430,7 +488,10 @@ class DonorDetailsShimmer extends StatelessWidget {
                           height: 14,
                           width: 60,
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.grey[900]
+                                    : Colors.white,
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),
@@ -438,7 +499,10 @@ class DonorDetailsShimmer extends StatelessWidget {
                           height: 12,
                           width: 40,
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.grey[900]
+                                    : Colors.white,
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),
@@ -446,7 +510,10 @@ class DonorDetailsShimmer extends StatelessWidget {
                           height: 12,
                           width: 50,
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.grey[900]
+                                    : Colors.white,
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),
@@ -472,8 +539,8 @@ class AllDonationsShimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Shimmer.fromColors(
-      baseColor: Colors.grey[300]!,
-      highlightColor: Colors.grey[100]!,
+      baseColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey[800]! : Colors.grey[300]!,
+      highlightColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey[700]! : Colors.grey[100]!,
       child: ListView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -485,7 +552,7 @@ class AllDonationsShimmer extends StatelessWidget {
             child: Container(
               height: 85,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: Colors.grey[200]!,
@@ -501,7 +568,9 @@ class AllDonationsShimmer extends StatelessWidget {
                       width: 50,
                       height: 50,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.grey[900]
+                            : Colors.white,
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: Colors.grey[300]!,
@@ -521,7 +590,10 @@ class AllDonationsShimmer extends StatelessWidget {
                             height: 16,
                             width: double.infinity,
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? Colors.grey[900]
+                                  : Colors.white,
                               borderRadius: BorderRadius.circular(4),
                             ),
                           ),
@@ -533,7 +605,10 @@ class AllDonationsShimmer extends StatelessWidget {
                                 height: 12,
                                 width: 80,
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
+                                  color: Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.grey[900]
+                                      : Colors.white,
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                               ),
@@ -542,7 +617,10 @@ class AllDonationsShimmer extends StatelessWidget {
                                 height: 12,
                                 width: 60,
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
+                                  color: Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.grey[900]
+                                      : Colors.white,
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                               ),
@@ -551,13 +629,15 @@ class AllDonationsShimmer extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 8),
                     // Amount placeholder
                     Container(
-                      width: 80,
+                      width: 70,
                       height: 32,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.grey[900]
+                            : Colors.white,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
                           color: Colors.grey[300]!,
@@ -593,8 +673,10 @@ class BottomShimmerLoader extends StatelessWidget {
                 Container(
                   width: 20,
                   height: 20,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey[900]
+                        : Colors.white,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -603,7 +685,9 @@ class BottomShimmerLoader extends StatelessWidget {
                   width: 100,
                   height: 14,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey[900]
+                        : Colors.white,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -653,7 +737,9 @@ class DeletionHistoryShimmer extends StatelessWidget {
                       width: 50,
                       height: 50,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.grey[900]
+                            : Colors.white,
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: Colors.grey[300]!,
@@ -673,7 +759,10 @@ class DeletionHistoryShimmer extends StatelessWidget {
                                 child: Container(
                                   height: 16,
                                   decoration: BoxDecoration(
-                                    color: Colors.white,
+                                    color: Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors.grey[900]
+                                        : Colors.white,
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                 ),
@@ -694,7 +783,10 @@ class DeletionHistoryShimmer extends StatelessWidget {
                             height: 12,
                             width: 120,
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? Colors.grey[900]
+                                  : Colors.white,
                               borderRadius: BorderRadius.circular(4),
                             ),
                           ),
@@ -706,7 +798,9 @@ class DeletionHistoryShimmer extends StatelessWidget {
                       width: 80,
                       height: 32,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.grey[900]
+                            : Colors.white,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
                           color: Colors.grey[300]!,
@@ -734,8 +828,12 @@ class SettingsShimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Shimmer.fromColors(
-      baseColor: const Color(0xFFE0E0E0),
-      highlightColor: const Color(0xFFF5F5F5),
+      baseColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey[800]!
+          : const Color(0xFFE0E0E0),
+      highlightColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey[700]!
+          : const Color(0xFFF5F5F5),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -746,38 +844,43 @@ class SettingsShimmer extends StatelessWidget {
               height: 20,
               width: 100,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white,
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
             const SizedBox(height: 20),
-            
+
             // Reports section
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.grey[300]!),
               ),
               child: Column(
                 children: [
                   // Filter dropdowns
-                  ...List.generate(4, (index) => Column(
-                    children: [
-                      Container(
-                        height: 48,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: Colors.grey[300]!),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                  )),
-                  
+                  ...List.generate(
+                      4,
+                      (index) => Column(
+                            children: [
+                              Container(
+                                height: 48,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.grey[900]
+                                      : Colors.white,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: Colors.grey[300]!),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                          )),
+
                   // Buttons
                   Row(
                     children: [
@@ -785,7 +888,10 @@ class SettingsShimmer extends StatelessWidget {
                         child: Container(
                           height: 40,
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.grey[900]
+                                    : Colors.white,
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),
@@ -795,7 +901,10 @@ class SettingsShimmer extends StatelessWidget {
                         child: Container(
                           height: 40,
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.grey[900]
+                                    : Colors.white,
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),
@@ -806,46 +915,57 @@ class SettingsShimmer extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-            
+
             // Menu items
-            ...List.generate(3, (index) => Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Container(
-                          height: 16,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(4),
+            ...List.generate(
+                3,
+                (index) => Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.grey[900]
+                                      : Colors.white,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Container(
+                                  height: 16,
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors.grey[900]
+                                        : Colors.white,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                width: 16,
+                                height: 16,
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.grey[900]
+                                      : Colors.white,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                      Container(
-                        width: 16,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (index < 2) const SizedBox(height: 8),
-              ],
-            )),
+                        if (index < 2) const SizedBox(height: 8),
+                      ],
+                    )),
           ],
         ),
       ),
@@ -862,19 +982,23 @@ class GenericListShimmer extends StatelessWidget {
   final int itemCount;
   final double itemHeight;
   final EdgeInsets? padding;
-  
+
   const GenericListShimmer({
     Key? key,
     this.itemCount = 6,
     this.itemHeight = 80,
     this.padding,
   }) : super(key: key);
-  
+
   @override
   Widget build(BuildContext context) {
     return Shimmer.fromColors(
-      baseColor: const Color(0xFFE0E0E0),
-      highlightColor: const Color(0xFFF5F5F5),
+      baseColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey[800]!
+          : const Color(0xFFE0E0E0),
+      highlightColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey[700]!
+          : const Color(0xFFF5F5F5),
       child: ListView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -885,7 +1009,7 @@ class GenericListShimmer extends StatelessWidget {
             height: itemHeight,
             margin: const EdgeInsets.only(bottom: 12),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: Colors.grey[300]!),
             ),
@@ -899,12 +1023,12 @@ class GenericListShimmer extends StatelessWidget {
 /// Generic form shimmer
 class GenericFormShimmer extends StatelessWidget {
   final int fieldCount;
-  
+
   const GenericFormShimmer({
     Key? key,
     this.fieldCount = 5,
   }) : super(key: key);
-  
+
   @override
   Widget build(BuildContext context) {
     return Shimmer.fromColors(
@@ -914,30 +1038,32 @@ class GenericFormShimmer extends StatelessWidget {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: List.generate(fieldCount, (index) => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                height: 14,
-                width: 80 + (index * 20.0),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                height: 48,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: Colors.grey[300]!),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-          )),
+          children: List.generate(
+              fieldCount,
+              (index) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        height: 14,
+                        width: 80 + (index * 20.0),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        height: 48,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: Colors.grey[300]!),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  )),
         ),
       ),
     );

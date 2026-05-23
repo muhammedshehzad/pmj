@@ -14,6 +14,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../secondary/all_donations.dart';
 import '../secondary/donor_deletion_history_page.dart';
+import '../screens/transaction_deletion_history_page.dart';
+import '../services/permission_service.dart';
+import 'manage_users_page.dart';
 import '../services/local_database_service.dart';
 import '../assets/custom%20widgets/shimmer_widgets.dart';
 import '../assets/custom widgets/GPay.dart';
@@ -21,6 +24,7 @@ import '../assets/custom widgets/transition.dart';
 import '../screens/payment_links_screen.dart';
 import '../screens/upi_config_screen.dart';
 import 'package:hugeicons/hugeicons.dart';
+import '../screens/transaction_report_screen.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -66,6 +70,49 @@ class _SettingsPageState extends State<SettingsPage> {
                   onTap: () {
                     Navigator.push(
                       context,
+                      SlidingPageTransitionRL(page: const TransactionReportScreen()),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const HugeIcon(
+                              icon: HugeIcons.strokeRoundedAnalyticsUp,
+                              size: 24,
+                              color: Color(0xff1BA3A1),
+                            ),
+                            const SizedBox(width: 12),
+                            const Text(
+                              "Income & Expense Report",
+                              style: TextStyle(
+                                fontWeight: FontWeight.w400,
+                                fontSize: 14,
+                                fontFamily: "Inter",
+                              ),
+                            ),
+                          ],
+                        ),
+                        HugeIcon(
+                          icon: HugeIcons.strokeRoundedArrowRight01,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.black,
+                          size: 16,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
                       SlidingPageTransitionRL(page: const NotificationsPage()),
                     );
                   },
@@ -94,11 +141,11 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                           ],
                         ),
-                        const Padding(
+                         Padding(
                           padding: EdgeInsets.only(left: 8.0),
                           child: HugeIcon(
                             icon: HugeIcons.strokeRoundedArrowRight01,
-                            color: Colors.black,
+                            color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
                             size: 16,
                           ),
                         ),
@@ -139,9 +186,9 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                           ],
                         ),
-                        const HugeIcon(
+                        HugeIcon(
                           icon: HugeIcons.strokeRoundedArrowRight01,
-                          color: Colors.black,
+                          color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
                           size: 16,
                         ),
                       ],
@@ -181,9 +228,9 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                           ],
                         ),
-                        const HugeIcon(
+                        HugeIcon(
                           icon: HugeIcons.strokeRoundedArrowRight01,
-                          color: Colors.black,
+                          color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
                           size: 16,
                         ),
                       ],
@@ -223,15 +270,59 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                           ],
                         ),
-                        const HugeIcon(
+                        HugeIcon(
                           icon: HugeIcons.strokeRoundedArrowRight01,
-                          color: Colors.black,
+                          color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
                           size: 16,
                         ),
                       ],
                     ),
                   ),
                 ),
+                if (context.watch<Permissions>().canManageUsers) ...[
+                  const SizedBox(height: 14),
+                  InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        SlidingPageTransitionRL(page: const ManageUsersPage()),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 6, horizontal: 6),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: const [
+                              HugeIcon(
+                                icon: HugeIcons.strokeRoundedUserGroup,
+                                size: 24,
+                                color: Color(0xff1BA3A1),
+                              ),
+                              SizedBox(width: 12),
+                              Text(
+                                "Manage Users",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w400,
+                                  fontSize: 14,
+                                  fontFamily: "Inter",
+                                ),
+                              ),
+                            ],
+                          ),
+                          HugeIcon(
+                            icon: HugeIcons.strokeRoundedArrowRight01,
+                            color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
+                            size: 16,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 InkWell(
                   onTap: () {
@@ -265,9 +356,51 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                           ],
                         ),
-                        const HugeIcon(
+                        HugeIcon(
                           icon: HugeIcons.strokeRoundedArrowRight01,
-                          color: Colors.black,
+                          color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
+                          size: 16,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      SlidingPageTransitionRL(page: const TransactionDeletionHistoryPage()),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const HugeIcon(
+                              icon: HugeIcons.strokeRoundedDelete04,
+                              size: 24,
+                              color: Color(0xff1BA3A1),
+                            ),
+                            const SizedBox(width: 12),
+                            const Text(
+                              "Transaction Deletion History",
+                              style: TextStyle(
+                                fontWeight: FontWeight.w400,
+                                fontSize: 14,
+                                fontFamily: "Inter",
+                              ),
+                            ),
+                          ],
+                        ),
+                        HugeIcon(
+                          icon: HugeIcons.strokeRoundedArrowRight01,
+                          color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
                           size: 16,
                         ),
                       ],
@@ -356,17 +489,17 @@ class NotificationsPage extends StatelessWidget {
         ),
       ),
       body: Container(
-        color: Colors.white,
+        color: Theme.of(context).scaffoldBackgroundColor,
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).cardColor,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Theme.of(context).brightness == Brightness.dark ? Colors.black.withOpacity(0.5) : Colors.black.withOpacity(0.05),
                       spreadRadius: 1,
                       blurRadius: 3,
                       offset: const Offset(0, 2),
@@ -400,18 +533,18 @@ class NotificationsPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 150),
-              const Text(
+              Text(
                 'Coming Soon',
                 style: TextStyle(
                   fontFamily: "Inter",
                   fontWeight: FontWeight.w600,
                   fontSize: 20,
-                  color: Colors.black87,
+                  color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87,
                 ),
               ),
               const SizedBox(height: 12),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 32),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: Text(
                   'Notifications will be available in the next version of the app.',
                   textAlign: TextAlign.center,
@@ -419,18 +552,18 @@ class NotificationsPage extends StatelessWidget {
                     fontFamily: "Inter",
                     fontWeight: FontWeight.w400,
                     fontSize: 14,
-                    color: Colors.black54,
+                    color: Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black54,
                   ),
                 ),
               ),
               const SizedBox(height: 24),
-              const Text(
+              Text(
                 'Coming in v2.1',
                 style: TextStyle(
                   fontFamily: "Inter",
                   fontWeight: FontWeight.w500,
                   fontSize: 12,
-                  color: Colors.black54,
+                  color: Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black54,
                 ),
               ),
             ],
@@ -1047,7 +1180,7 @@ class _ReportsSectionState extends State<ReportsSection> {
             Container(
               margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-                color: const Color(0xffF2F2F3),
+                color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E1E) : const Color(0xffF2F2F3),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Row(
@@ -1079,14 +1212,14 @@ class _ReportsSectionState extends State<ReportsSection> {
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 16, right: 8),
                     decoration: BoxDecoration(
-                      color: const Color(0xffF2F2F3),
+                      color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E1E) : const Color(0xffF2F2F3),
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(color: const Color(0xFFE0E0E0)),
                     ),
                     child: DropdownButtonFormField<int>(
                       value: startMonthIndex,
                       isExpanded: true,
-                      dropdownColor: Colors.white,
+                      dropdownColor: Theme.of(context).cardColor,
                       elevation: 1,
                       items: List.generate(months.length - 1, (index) {
                         return DropdownMenuItem<int>(
@@ -1127,14 +1260,14 @@ class _ReportsSectionState extends State<ReportsSection> {
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 16, left: 8),
                     decoration: BoxDecoration(
-                      color: const Color(0xffF2F2F3),
+                      color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E1E) : const Color(0xffF2F2F3),
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(color: const Color(0xFFE0E0E0)),
                     ),
                     child: DropdownButtonFormField<int>(
                       value: endMonthIndex,
                       isExpanded: true,
-                      dropdownColor: Colors.white,
+                      dropdownColor: Theme.of(context).cardColor,
                       elevation: 1,
                       items: List.generate(months.length - 1, (index) {
                         final isDisabled = index < startMonthIndex;
@@ -1179,14 +1312,14 @@ class _ReportsSectionState extends State<ReportsSection> {
               children: [
                 Expanded(
                   child: Container(
-                    decoration: const BoxDecoration(
-                      color: Color(0xffF2F2F3),
-                      borderRadius: BorderRadius.all(Radius.circular(4)),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E1E) : const Color(0xffF2F2F3),
+                      borderRadius: const BorderRadius.all(Radius.circular(4)),
                     ),
                     child: DropdownButtonFormField<String>(
                       value: selectedYear,
                       isExpanded: true,
-                      dropdownColor: Colors.white,
+                      dropdownColor: Theme.of(context).cardColor,
                       elevation: 1,
                       items: years.map((String year) {
                         return DropdownMenuItem<String>(
@@ -1218,9 +1351,9 @@ class _ReportsSectionState extends State<ReportsSection> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: Container(
-                    decoration: const BoxDecoration(
-                      color: Color(0xffF2F2F3),
-                      borderRadius: BorderRadius.all(Radius.circular(4)),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E1E) : const Color(0xffF2F2F3),
+                      borderRadius: const BorderRadius.all(Radius.circular(4)),
                     ),
                     child: DropdownButtonFormField<int>(
                       value: selectedMonthIndex,
@@ -1250,7 +1383,7 @@ class _ReportsSectionState extends State<ReportsSection> {
                         contentPadding: EdgeInsets.symmetric(horizontal: 12),
                       ),
                       isExpanded: true,
-                      dropdownColor: Colors.white,
+                      dropdownColor: Theme.of(context).cardColor,
                       elevation: 1,
                     ),
                   ),
@@ -1259,9 +1392,9 @@ class _ReportsSectionState extends State<ReportsSection> {
             ),
           const SizedBox(height: 16),
           Container(
-            decoration: const BoxDecoration(
-              color: Color(0xffF2F2F3),
-              borderRadius: BorderRadius.all(Radius.circular(4)),
+            decoration: BoxDecoration(
+              color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E1E) : const Color(0xffF2F2F3),
+              borderRadius: const BorderRadius.all(Radius.circular(4)),
             ),
             child: DropdownButtonFormField<String>(
               value: selectedPerson,
@@ -1290,15 +1423,15 @@ class _ReportsSectionState extends State<ReportsSection> {
                 contentPadding: EdgeInsets.symmetric(horizontal: 12),
               ),
               isExpanded: true,
-              dropdownColor: Colors.white,
+              dropdownColor: Theme.of(context).cardColor,
               elevation: 1,
             ),
           ),
           const SizedBox(height: 16),
           Container(
-            decoration: const BoxDecoration(
-              color: Color(0xffF2F2F3),
-              borderRadius: BorderRadius.all(Radius.circular(4)),
+            decoration: BoxDecoration(
+              color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E1E) : const Color(0xffF2F2F3),
+              borderRadius: const BorderRadius.all(Radius.circular(4)),
             ),
             child: DropdownButtonFormField<String>(
               value: selectedFilter,
@@ -1327,7 +1460,7 @@ class _ReportsSectionState extends State<ReportsSection> {
                 contentPadding: EdgeInsets.symmetric(horizontal: 12),
               ),
               isExpanded: true,
-              dropdownColor: Colors.white,
+              dropdownColor: Theme.of(context).cardColor,
               elevation: 1,
             ),
           ),

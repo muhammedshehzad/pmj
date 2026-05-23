@@ -2,8 +2,11 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:intl/intl.dart';
 import 'package:pmj_application/assets/custom widgets/PeopleListViewHome.dart';
 import 'package:pmj_application/assets/custom widgets/logoutpopup.dart';
+import '../assets/custom widgets/transition.dart';
+import '../utils/month_formatter.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -179,46 +182,63 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
     }
     Set<String> donorIds = {};
     for (var doc in snapshot.docs) {
+      // paymentStatus doc is inside donors/{donorId}/paymentStatus
       final donorId = doc.reference.parent.parent?.id;
       if (donorId != null && donorId.isNotEmpty) {
         donorIds.add(donorId);
       }
     }
     // Prefetch donor data
-    final donorsSnapshot = await FirebaseFirestore.instance
-        .collection('donors')
-        .where(FieldPath.documentId, whereIn: donorIds.toList())
-        .get();
     final donorCache = <String, Map<String, dynamic>>{};
-    for (var doc in donorsSnapshot.docs) {
-      if (doc.exists && doc.data().isNotEmpty) {
-        donorCache[doc.id] = doc.data();
+    if (donorIds.isNotEmpty) {
+      final donorIdList = donorIds.toList();
+      for (var i = 0; i < donorIdList.length; i += 10) {
+        final chunk = donorIdList.sublist(i, (i + 10).clamp(0, donorIdList.length));
+        final donorsSnapshot = await FirebaseFirestore.instance
+            .collection('donors')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+        for (var doc in donorsSnapshot.docs) {
+          if (doc.exists && doc.data().isNotEmpty) {
+            donorCache[doc.id] = doc.data();
+          }
+        }
       }
     }
+
     List<Person> newDonations = [];
     for (var doc in snapshot.docs) {
       final data = doc.data() as Map<String, dynamic>?;
       if (data == null) continue;
-      final donorId = doc.reference.parent.parent?.id;
-      if (donorId != null &&
-          donorId.isNotEmpty &&
-          donorCache.containsKey(donorId)) {
-        final donorData = donorCache[donorId]!;
-        final donorName = donorData['name'] ?? 'Unknown Donor';
-        final donorImageUrl = donorData['imageUrl'] ?? '';
+      
+      // Consolidation logic: Skip entries marked to be hidden
+      if (data['hideFromHistory'] == true) continue;
+      
+      final donorId = doc.reference.parent.parent?.id ?? data['donorId'] as String?;
+      if (donorId != null && donorId.isNotEmpty) {
+        final donorData = donorCache[donorId];
+        final donorName = donorData?['name'] ?? data['name'] ?? 'Unknown Donor';
+        final donorImageUrl = donorData?['imageUrl'] ?? data['imageUrl'] ?? '';
+        final donorAddress = donorData?['address']?.toString() ?? 'Unknown';
+        
+        final monthsList = data['monthsList'] != null ? List<String>.from(data['monthsList']) : null;
+        final amount = (data['totalDonationAmount'] ?? data['amount'] ?? 0);
+
         newDonations.add(Person(
           name: donorName,
-          house: donorData['address']?.toString() ?? 'Unknown',
+          house: donorAddress,
           photoUrl: donorImageUrl,
-          amount: _parseAmount(data['amount']).toDouble(),
-          date: _formatTimestamp(data['timestamp']),
+          amount: _parseAmount(amount).toDouble(),
+          date: _formatTimestamp(data['timestamp'] ?? data['paidDate'] ?? data['date']),
           month: data['month']?.toString() ?? 'Unknown',
           year: data['year']?.toString() ?? 'Unknown',
-          method: data['paymentMethod']?.toString() ?? 'Unknown',
-          status: data['status']?.toString() ?? 'Unpaid',
+          method: data['method']?.toString() ?? data['paymentMethod']?.toString() ?? 'Unknown',
+          status: data['status']?.toString() ?? 'Paid',
           donorId: donorId,
           documentPath: doc.reference.path,
+          donationId: data['donationId']?.toString(), // Added donationId
           imageUrl: donorImageUrl,
+          monthsList: monthsList,
           timestamp: (data['timestamp'] is Timestamp)
               ? (data['timestamp'] as Timestamp).toDate()
               : null,
@@ -231,7 +251,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
       _lastDocument = snapshot.docs.last;
       _isPaginating = false;
       _initialLoading = false;
-      if (newDonations.length < _pageSize) {
+      if (snapshot.docs.length < _pageSize) {
         _hasMore = false;
       }
     });
@@ -240,7 +260,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xffFFFFFF),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(100),
         child: AppBar(
@@ -328,7 +348,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
                       );
                     }
                   },
-                  color: Colors.white,
+                  color: Theme.of(context).cardColor,
                   itemBuilder: (context) => [
                     PopupMenuItem<String>(
                       value: 'history',
@@ -377,11 +397,11 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
             _handleSearchChange(value);
           },
           textAlignVertical: TextAlignVertical.center,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12,
             fontFamily: "Inter",
             fontWeight: FontWeight.w400,
-            color: Colors.black,
+            color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
           ),
           decoration: InputDecoration(
             hintText: 'Search by Name, Month, or Amount',
@@ -698,27 +718,35 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
       for (final doc in snapshot.docs) {
         final data = doc.data() as Map<String, dynamic>?;
         if (data == null) continue;
-        final donorId = doc.reference.parent.parent?.id;
+        
+        // Skip hidden entries
+        if (data['hideFromHistory'] == true) continue;
+        
+        final donorId = doc.reference.parent.parent?.id ?? data['donorId'] as String?;
         if (donorId == null || donorId.isEmpty) continue;
         final donorData = donorCache[donorId] ?? {};
 
-        final donorName = (donorData['name'] ?? 'Unknown Donor').toString();
-        final donorImageUrl = (donorData['imageUrl'] ?? '').toString();
-        final donorAddress = (donorData['address'] ?? 'Unknown').toString();
+        final donorName = donorData['name'] ?? data['name'] ?? 'Unknown Donor';
+        final donorImageUrl = donorData['imageUrl'] ?? data['imageUrl'] ?? '';
+        final donorAddress = donorData['address']?.toString() ?? 'Unknown';
+        
+        final monthsList = data['monthsList'] != null ? List<String>.from(data['monthsList']) : null;
+        final amount = (data['totalDonationAmount'] ?? data['amount'] ?? 0);
 
         final person = Person(
-          name: donorName,
-          house: donorAddress,
-          photoUrl: donorImageUrl,
-          amount: _parseAmount(data['amount']).toDouble(),
-          date: _formatTimestamp(data['timestamp']),
+          name: donorName.toString(),
+          house: donorAddress.toString(),
+          photoUrl: donorImageUrl.toString(),
+          amount: _parseAmount(amount).toDouble(),
+          date: _formatTimestamp(data['timestamp'] ?? data['paidDate'] ?? data['date']),
           month: data['month']?.toString() ?? 'Unknown',
           year: data['year']?.toString() ?? 'Unknown',
-          method: data['paymentMethod']?.toString() ?? 'Unknown',
-          status: data['status']?.toString() ?? 'Unpaid',
+          method: data['method']?.toString() ?? data['paymentMethod']?.toString() ?? 'Unknown',
+          status: data['status']?.toString() ?? 'Paid',
           donorId: donorId,
           documentPath: doc.reference.path,
-          imageUrl: donorImageUrl,
+          imageUrl: donorImageUrl.toString(),
+          monthsList: monthsList,
           timestamp: (data['timestamp'] is Timestamp)
               ? (data['timestamp'] as Timestamp).toDate()
               : null,
@@ -777,6 +805,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
     final monthMatch = person.month?.toLowerCase().contains(q) ?? false;
     final yearMatch = person.year?.toLowerCase().contains(q) ?? false;
     final methodMatch = person.method?.toLowerCase().contains(q) ?? false;
+    final monthsListMatch = person.monthsList?.any((m) => m.toLowerCase().contains(q)) ?? false;
     final amountMatch = person.amount.toString().contains(q) ||
         person.amount.toStringAsFixed(0).contains(q);
     return nameMatch ||
@@ -785,6 +814,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
         monthMatch ||
         yearMatch ||
         methodMatch ||
+        monthsListMatch ||
         amountMatch;
   }
 
@@ -1070,6 +1100,8 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
         'date': person.date,
         'month': person.month,
         'year': person.year,
+        'monthsList': person.monthsList,
+        'totalDonationAmount': person.totalDonationAmount,
         'method': person.method,
         'status': person.status,
         'donorId': person.donorId,
@@ -1079,7 +1111,48 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
       });
 
       // Delete from Firestore
-      await FirebaseFirestore.instance.doc(person.documentPath!).delete();
+      final batch = FirebaseFirestore.instance.batch();
+      
+      // 1. Delete the global donation record if donationId is available
+      if (person.donationId != null && person.donationId!.isNotEmpty) {
+        final globalDonationRef = FirebaseFirestore.instance
+            .collection('donations')
+            .doc(person.donationId);
+        batch.delete(globalDonationRef);
+        debugPrint('Adding global donation deletion to batch: ${globalDonationRef.path}');
+      }
+      
+      // 2. Reset individual month statuses to 'unpaid' in the paymentStatus collection
+      if (person.donorId != null) {
+        final donorRef = FirebaseFirestore.instance.collection('donors').doc(person.donorId);
+        
+        List<String> monthsToReset = [];
+        if (person.monthsList != null && person.monthsList!.isNotEmpty) {
+          monthsToReset = person.monthsList!;
+        } else if (person.month != null) {
+          monthsToReset = [person.month!];
+        }
+        
+        for (final month in monthsToReset) {
+          final monthYearKey = '$month-${person.year}';
+          final statusRef = donorRef.collection('paymentStatus').doc(monthYearKey);
+          
+          // Reset status to unpaid. This also removes it from the "paid" list in this page
+          // as we query status == 'paid'.
+          batch.update(statusRef, {
+            'status': 'unpaid',
+            'amount': 0,
+            'paymentMethod': '',
+            'timestamp': FieldValue.serverTimestamp(),
+            // Important: also clear the link to the deleted global donation
+            'donationId': FieldValue.delete(),
+          });
+          debugPrint('Adding payment status reset to batch: ${statusRef.path}');
+        }
+      }
+      
+      await batch.commit();
+
       // Also delete from local cache so UI updates immediately
       await LocalDatabaseService()
           .deleteDonationByDocumentPath(person.documentPath!);
@@ -1108,15 +1181,16 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
       return true;
     } catch (e) {
       if (mounted) {
+        print('Failed to delete donation. Please try again.$e');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
-              children: const [
+              children:  [
                 Icon(Icons.error, color: Colors.white, size: 20),
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Failed to delete donation. Please try again.',
+                    'Failed to delete donation. Please try again.$e',
                     style: TextStyle(fontFamily: "Inter"),
                   ),
                 ),
@@ -1135,221 +1209,219 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
   }
 
   String _formatTimestamp(dynamic timestamp) {
+    if (timestamp == null) return "N/A";
     try {
-      if (timestamp == null) return "Unknown Date";
-
-      DateTime date;
+      DateTime? date;
       if (timestamp is Timestamp) {
         date = timestamp.toDate();
+      } else if (timestamp is DateTime) {
+        date = timestamp;
       } else if (timestamp is String) {
-        date = DateTime.parse(timestamp);
-      } else {
-        return "Invalid Date";
+        if (timestamp.contains(',') || timestamp.length > 12) {
+          return timestamp; // Already formatted
+        }
+        date = DateTime.tryParse(timestamp);
       }
-
-      // Return date with exact time in 12h format with AM/PM: dd MMM yyyy, hh:mm AM/PM
-      const monthNames = [
-        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-      ];
-      final day = date.day.toString().padLeft(2, '0');
-      final monthName = monthNames[(date.month - 1).clamp(0, 11)];
-      final year = date.year.toString();
-      int h24 = date.hour;
-      final ampm = h24 >= 12 ? 'PM' : 'AM';
-      int h12 = h24 % 12;
-      if (h12 == 0) h12 = 12; // 0 or 12 -> 12
-      final hour = h12.toString().padLeft(2, '0');
-      final minute = date.minute.toString().padLeft(2, '0');
-      return "$day $monthName $year, $hour:$minute $ampm";
+      
+      if (date != null) {
+        return DateFormat('dd MMM yyyy, hh:mm a').format(date);
+      }
+      return timestamp.toString();
     } catch (e) {
-      print('Error formatting timestamp: $e');
-      return "Unknown Date";
+      return "N/A";
     }
   }
 
-  void _showPaymentDetailsDialog(BuildContext context, Person person) async {
-    showDialog(
+  void _showPaymentDetailsDialog(BuildContext context, Person person) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+
+    showModalBottomSheet(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        return Container(
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
-          elevation: 0,
-          backgroundColor: Colors.transparent,
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  spreadRadius: 5,
-                  blurRadius: 7,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xff1BA3A1).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Drag handle
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.white24 : Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
                   ),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 28,
-                        backgroundImage: (person.imageUrl != null &&
-                                person.imageUrl!.isNotEmpty)
-                            ? NetworkImage(person.imageUrl!)
-                            : null,
-                        backgroundColor: (person.imageUrl != null &&
-                                person.imageUrl!.isNotEmpty)
-                            ? null
-                            : const Color(0xff1BA3A1),
-                        child: (person.imageUrl == null ||
-                                person.imageUrl!.isEmpty)
-                            ? Text(
-                                person.name.isNotEmpty
-                                    ? person.name[0].toUpperCase()
-                                    : '',
+                  const SizedBox(height: 20),
+
+                  // Header: avatar + name + amount + badge
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xff1BA3A1).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 28,
+                          backgroundImage: (person.imageUrl != null &&
+                                  person.imageUrl!.isNotEmpty)
+                              ? NetworkImage(person.imageUrl!)
+                              : null,
+                          backgroundColor: const Color(0xff1BA3A1),
+                          child: (person.imageUrl == null ||
+                                  person.imageUrl!.isEmpty)
+                              ? Text(
+                                  person.name.isNotEmpty
+                                      ? person.name[0].toUpperCase()
+                                      : '',
+                                  style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                person.name,
                                 style: const TextStyle(
-                                  fontSize: 20,
+                                  fontFamily: 'Inter',
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.white,
+                                  fontSize: 16,
+                                  color: Color(0xff1BA3A1),
                                 ),
-                              )
-                            : null,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '₹${person.amount.toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 20,
+                                  color: Color(0xff1BA3A1),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xff1BA3A1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            person.status ?? 'Paid',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontFamily: 'Inter',
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+                  Divider(height: 1, color: isDark ? Colors.white12 : const Color(0xffeeeeee)),
+                  const SizedBox(height: 20),
+
+                  _detailItem(Icons.calendar_today, 'Transaction Date', person.date ?? 'N/A'),
+                  _detailItem(Icons.payment, 'Payment Method', person.method ?? 'N/A'),
+                  _detailItem(
+                    Icons.date_range,
+                    'Month',
+                    (person.monthsList != null && person.monthsList!.isNotEmpty)
+                        ? MonthFormatter.formatMonthLong(person.monthsList!, person.year ?? '', includeYear: false)
+                        : (person.month ?? 'N/A'),
+                  ),
+                  _detailItem(Icons.calendar_view_month, 'Payment Year', person.year ?? 'N/A'),
+
+                  const SizedBox(height: 12),
+
+                  // Buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            try {
+                              final imagePath = await _generateAndSaveImage(person);
+                              await Share.shareXFiles(
+                                [XFile(imagePath)],
+                                text: 'Donation Receipt for ${person.name}',
+                              );
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Failed to generate receipt: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          icon: const Icon(Icons.share_rounded, size: 18),
+                          label: const Text(
+                            'Share Receipt',
+                            style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w600),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xff1BA3A1),
+                            side: const BorderSide(color: Color(0xff1BA3A1), width: 1.5),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              person.name,
-                              style: const TextStyle(
-                                fontFamily: "Inter",
-                                fontWeight: FontWeight.w600,
-                                fontSize: 16,
-                                color: Color(0xff1BA3A1),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              "₹${person.amount}",
-                              style: const TextStyle(
-                                fontFamily: "Inter",
-                                fontWeight: FontWeight.w700,
-                                fontSize: 18,
-                                color: Color(0xff1BA3A1),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xff1BA3A1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          person.status!,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontFamily: "Inter",
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.of(sheetCtx).pop(),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xff1BA3A1),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10)),
+                          ),
+                          child: const Text(
+                            'Close',
+                            style: TextStyle(
+                                fontFamily: 'Inter',
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15),
                           ),
                         ),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 20),
-                _detailItem(Icons.calendar_today, "Date", person.date ?? 'N/A'),
-                _detailItem(
-                    Icons.payment, "Payment Method", person.method ?? 'N/A'),
-                _detailItem(Icons.date_range, "Month", person.month ?? 'N/A'),
-                _detailItem(
-                    Icons.calendar_view_month, "Year", person.year ?? 'N/A'),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          try {
-                            final imagePath =
-                                await _generateAndSaveImage(person);
-                            await Share.shareXFiles([XFile(imagePath)],
-                                text: 'Donation Receipt for ${person.name}');
-                          } catch (e) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Failed to generate receipt: $e'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: const Color(0xff1BA3A1),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            side: const BorderSide(color: Color(0xff1BA3A1)),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: const Text(
-                          'Share Receipt',
-                          style: TextStyle(
-                            fontFamily: "Inter",
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                            color: Color(0xff1BA3A1),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(dialogContext).pop();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xff1BA3A1),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: const Text(
-                          'Close',
-                          style: TextStyle(
-                            fontFamily: "Inter",
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -1359,29 +1431,41 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
 
   Widget _detailItem(IconData icon, String label, String? value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 20),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 18, color: const Color(0xff1BA3A1)),
-          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xff1BA3A1).withOpacity(0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 20, color: const Color(0xff1BA3A1)),
+          ),
+          const SizedBox(width: 16),
           Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  label,
-                  style: const TextStyle(
+                  label.toUpperCase(),
+                  style:  TextStyle(
                     fontFamily: "Inter",
-                    fontSize: 14,
-                    color: Colors.black54,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.8,
+                    color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[400] : Colors.black45,
                   ),
                 ),
+                const SizedBox(height: 4),
                 Text(
-                  value!,
-                  style: const TextStyle(
+                  value ?? 'N/A',
+                  style:  TextStyle(
                     fontFamily: "Inter",
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).brightness == Brightness.dark ? Colors.white : const Color(0xff2d2d2d),
                   ),
                 ),
               ],
@@ -1561,9 +1645,11 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
                     const SizedBox(height: 8),
                     _buildReceiptRow(
                         'Month:',
-                        person.month != null && person.year != null
-                            ? '${person.month} ${person.year}'
-                            : null),
+                        person.monthsList != null && person.monthsList!.isNotEmpty
+                            ? MonthFormatter.formatMonthLong(person.monthsList!, person.year ?? '')
+                            : (person.month != null && person.year != null
+                                ? '${person.month} ${person.year}'
+                                : 'N/A')),
                     const SizedBox(height: 8),
                     _buildReceiptRow(
                         'Amount', '₹${person.amount.toStringAsFixed(0)}/-',
@@ -1645,6 +1731,8 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
   Widget _buildReceiptRow(String label, String? value,
       {bool isAmount = false}) {
     final displayValue = value ?? 'N/A';
+    // Receipt is always light-themed (printed on white background).
+    // Hardcode dark text colors so they stay visible in dark mode.
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -1680,7 +1768,7 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
           barrierDismissible: false,
           builder: (BuildContext dialogContext) {
             return AlertDialog(
-              backgroundColor: Colors.white,
+              backgroundColor: Theme.of(context).cardColor,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
@@ -1693,18 +1781,16 @@ class _AllDonationsPageState extends State<AllDonationsPage> {
                   fontFamily: "Inter",
                   fontSize: 20,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF212121),
                   height: 1.3,
                 ),
               ),
               content: Text(
                 'Are you sure you want to delete this donation of ₹${person.amount} from ${person.name}?\n\nThis action cannot be undone.',
                 textAlign: TextAlign.start,
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: "Inter",
                   fontWeight: FontWeight.w400,
                   fontSize: 14,
-                  color: Color(0xFF757575),
                   height: 1.5,
                 ),
               ),
@@ -2022,7 +2108,7 @@ class _DonationListTile extends StatelessWidget {
         ),
       ),
       subtitle: Text(
-        "${person.date} • ${person.month} ${person.year}",
+        "${person.date} • ${person.monthsList != null && person.monthsList!.isNotEmpty ? MonthFormatter.formatMonthList(person.monthsList!, person.year ?? '') : '${person.month} ${person.year}'}",
         style: const TextStyle(
           fontSize: 10,
           fontFamily: "Inter",

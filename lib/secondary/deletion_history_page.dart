@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../models/donation_model.dart';
 import '../models/person_model.dart';
 import '../services/image_cache_service.dart';
+import '../utils/month_formatter.dart';
 import '../assets/custom%20widgets/shimmer_widgets.dart';
 
 class DeletionHistoryPage extends StatefulWidget {
@@ -52,6 +53,8 @@ class _DeletionHistoryPageState extends State<DeletionHistoryPage> {
           donorId: data['donorId'] ?? '',
           documentPath: data['originalDocumentPath'] ?? '',
           imageUrl: data['imageUrl'] ?? '',
+          monthsList: data['monthsList'] != null ? List<String>.from(data['monthsList']) : null,
+          totalDonationAmount: (data['totalDonationAmount'] as num?)?.toDouble(),
           timestamp: data['timestamp'] != null 
               ? (data['timestamp'] as Timestamp).toDate() 
               : null,
@@ -91,7 +94,7 @@ class _DeletionHistoryPageState extends State<DeletionHistoryPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xffFFFFFF),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(100),
         child: AppBar(
@@ -427,7 +430,7 @@ class _DeletionHistoryTile extends StatelessWidget {
           ],
         ),
         subtitle: Text(
-          "${person.timestamp != null ? _formatTimestampHistory(person.timestamp) : (person.date ?? 'Unknown Date')} • ${person.month} ${person.year}",
+          "${person.timestamp != null ? _formatTimestampHistory(person.timestamp) : (person.date ?? 'Unknown Date')} • ${person.monthsList != null && person.monthsList!.isNotEmpty ? MonthFormatter.formatMonthLong(person.monthsList!, person.year ?? '') : '${person.month} ${person.year}'}",
           style: const TextStyle(
             fontSize: 10,
             fontFamily: "Inter",

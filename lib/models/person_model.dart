@@ -16,6 +16,11 @@ class Person {
   String? status;
   String? imageUrl;
   DateTime? timestamp;
+  List<String>? monthsList;
+  double? totalDonationAmount;
+  bool? isMainEntry;
+  bool? hideFromHistory;
+  String? donationId;
 
   Person({
     this.id,
@@ -33,6 +38,11 @@ class Person {
     this.status,
     this.imageUrl,
     this.timestamp,
+    this.monthsList,
+    this.totalDonationAmount,
+    this.isMainEntry,
+    this.hideFromHistory,
+    this.donationId,
   });
 
   /// Creates a Person instance from Firestore document data
@@ -56,6 +66,11 @@ class Person {
       method: data['method']?.toString() ?? data['paymentMethod']?.toString(),
       status: data['status']?.toString() ?? 'Unpaid',
       imageUrl: data['imageUrl']?.toString(),
+      monthsList: data['monthsList'] != null ? List<String>.from(data['monthsList']) : null,
+      totalDonationAmount: (data['totalDonationAmount'] as num?)?.toDouble(),
+      isMainEntry: data['isMainEntry'] as bool?,
+      hideFromHistory: data['hideFromHistory'] as bool?,
+      donationId: data['donationId']?.toString(),
       timestamp: timestamp,
     );
   }
@@ -82,6 +97,11 @@ class Person {
           : (map['timestamp'] is Timestamp 
               ? (map['timestamp'] as Timestamp).toDate() 
               : null),
+      monthsList: map['monthsList'] != null ? List<String>.from(map['monthsList']) : null,
+      totalDonationAmount: (map['totalDonationAmount'] as num?)?.toDouble(),
+      isMainEntry: map['isMainEntry'] != null ? (map['isMainEntry'] is int ? map['isMainEntry'] == 1 : map['isMainEntry'] as bool) : null,
+      hideFromHistory: map['hideFromHistory'] != null ? (map['hideFromHistory'] is int ? map['hideFromHistory'] == 1 : map['hideFromHistory'] as bool) : null,
+      donationId: map['donationId'] as String?,
     );
   }
 
@@ -102,6 +122,11 @@ class Person {
       'status': status ?? 'Unpaid',
       if (imageUrl != null) 'imageUrl': imageUrl,
       'timestamp': timestamp,
+      if (monthsList != null) 'monthsList': monthsList,
+      if (totalDonationAmount != null) 'totalDonationAmount': totalDonationAmount,
+      if (isMainEntry != null) 'isMainEntry': isMainEntry,
+      if (hideFromHistory != null) 'hideFromHistory': hideFromHistory,
+      if (donationId != null) 'donationId': donationId,
     };
   }
 
@@ -122,6 +147,11 @@ class Person {
     String? status,
     String? imageUrl,
     DateTime? timestamp,
+    List<String>? monthsList,
+    double? totalDonationAmount,
+    bool? isMainEntry,
+    bool? hideFromHistory,
+    String? donationId,
   }) {
     return Person(
       id: id ?? this.id,
@@ -139,6 +169,11 @@ class Person {
       status: status ?? this.status,
       imageUrl: imageUrl ?? this.imageUrl,
       timestamp: timestamp ?? this.timestamp,
+      monthsList: monthsList ?? this.monthsList,
+      totalDonationAmount: totalDonationAmount ?? this.totalDonationAmount,
+      isMainEntry: isMainEntry ?? this.isMainEntry,
+      hideFromHistory: hideFromHistory ?? this.hideFromHistory,
+      donationId: donationId ?? this.donationId,
     );
   }
 

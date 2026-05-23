@@ -8,6 +8,7 @@ class UserService {
   static const String _loginStateKey = 'pmj_user_login_state_v2';
   static const String _userEmailKey = 'pmj_user_email_v2';
   static const String _userUidKey = 'pmj_user_uid_v2';
+  static const String _userRoleKey = 'pmj_user_role_v2';
   
   // Singleton pattern for better resource management
   static final UserService _instance = UserService._internal();
@@ -69,6 +70,28 @@ class UserService {
       debugPrint('UserService: User data synced to local storage');
     } catch (e) {
       debugPrint('UserService: Error syncing user data: $e');
+    }
+  }
+
+  // Sync role to local storage
+  Future<void> syncRoleToLocal(String role) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_userRoleKey, role);
+      debugPrint('UserService: Role $role synced to local storage');
+    } catch (e) {
+      debugPrint('UserService: Error syncing role: $e');
+    }
+  }
+
+  // Get stored role
+  Future<String?> getStoredRole() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_userRoleKey);
+    } catch (e) {
+      debugPrint('UserService: Error getting stored role: $e');
+      return null;
     }
   }
 
@@ -175,6 +198,7 @@ class UserService {
         prefs.remove(_loginStateKey),
         prefs.remove(_userEmailKey),
         prefs.remove(_userUidKey),
+        prefs.remove(_userRoleKey),
       ]);
       debugPrint('UserService: All user data cleared');
     } catch (e) {

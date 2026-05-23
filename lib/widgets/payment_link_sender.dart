@@ -39,7 +39,7 @@ Please pay your monthly donation of {amount} using this link:
 
 Thank you for your continued support!
 
-- PMJ Team''';
+- Team PMJ''';
   }
 
   @override

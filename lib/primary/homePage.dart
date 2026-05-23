@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:pmj_application/primary/paymentsPage.dart';
 import 'package:pmj_application/primary/settingsPage.dart';
+import 'package:pmj_application/screens/transactions_page.dart';
+import 'package:pmj_application/services/permission_service.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -17,6 +19,7 @@ import '../widgets/stable_avatar.dart';
 import 'donorPage.dart';
 import 'package:intl/intl.dart';
 import '../services/image_cache_service.dart';
+import '../utils/month_formatter.dart';
 
 class NavBarProvider with ChangeNotifier {
   int _selectedIndex = 0;
@@ -28,12 +31,6 @@ class NavBarProvider with ChangeNotifier {
     notifyListeners();
   }
 }
-
-class PeopleProvider with ChangeNotifier {
-  // This provider is now simplified since we use Isar streams directly
-}
-
-
 
 class homePage extends StatefulWidget {
   const homePage({Key? key}) : super(key: key);
@@ -228,8 +225,8 @@ class _homePageState extends State<homePage> with AutomaticKeepAliveClientMixin 
                 future: _statsFuture,
                 initialData: _lastStats,
                 builder: (context, statsSnapshot) {
-                  // Only show shimmer if we have never loaded stats before
-                  if (statsSnapshot.connectionState == ConnectionState.waiting &&
+                  // Only show shimmer if we have never loaded stats before or if we are still in initial load
+                  if ((statsSnapshot.connectionState == ConnectionState.waiting || _isInitialLoad) &&
                       (statsSnapshot.data == null && _lastStats == null)) {
                     return StatsShimmer();
                   }
@@ -407,8 +404,8 @@ class _homePageState extends State<homePage> with AutomaticKeepAliveClientMixin 
                         fontFamily: "Inter",
                         fontWeight: FontWeight.w400,
                         decoration: TextDecoration.underline,
-                        decorationColor: Colors.black,
-                        color: Color(0xff0B190C),
+                        decorationColor: Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black,
+                        color: Theme.of(context).brightness == Brightness.dark ? Colors.white : const Color(0xff0B190C),
                       ),
                     ),
                   ),
@@ -418,9 +415,9 @@ class _homePageState extends State<homePage> with AutomaticKeepAliveClientMixin 
                 stream: _recentDonationsStream,
                 initialData: _lastRecentDonations,
                 builder: (context, snapshot) {
-                  // Show shimmer only before the first ever data arrives
+                  // Show shimmer while we are still in initial load or before the first ever data arrives
                   final hasAnyData = (snapshot.data != null && snapshot.data!.isNotEmpty) || (_lastRecentDonations != null && _lastRecentDonations!.isNotEmpty);
-                  if (snapshot.connectionState == ConnectionState.waiting && !hasAnyData) {
+                  if ((snapshot.connectionState == ConnectionState.waiting || _isInitialLoad) && !hasAnyData) {
                     return DonationListShimmer();
                   }
 
@@ -433,13 +430,35 @@ class _homePageState extends State<homePage> with AutomaticKeepAliveClientMixin 
                   // keep cache updated without triggering rebuild loop
                   _lastRecentDonations = allDonations;
 
-                  // Filter for paid donations and take only recent 10
+                  // Filter for paid donations, take only recent 10, and skip hidden history entries
                   final recentDonations = allDonations
-                      .where((donation) => donation.status == 'paid')
-                      .take(10)
+                      .where((donation) => 
+                        donation.status == 'paid' && 
+                        donation.hideFromHistory != true &&
+                        (donation.monthsList == null || donation.monthsList!.isNotEmpty)
+                      )
                       .toList();
+                  
+                  // Sort and take 10 (though watchDonations should already sort)
+                  // We also need to manualy filter out the "hidden" entries if they are in the stream
+                  // Note: Donations from SQLite already have monthsList
+                  
+                  final filteredDonations = <Donation>[];
+                  final seenMainEntries = <String>{};
 
-                  if (recentDonations.isEmpty) {
+                  for (var donation in recentDonations) {
+                    // If it has a monthsList and status is paid, it's likely a consolidated entry or a single month
+                    // We want to avoid showing the same donation twice if the stream has both
+                    final key = '${donation.donorId}_${donation.month}_${donation.year}';
+                    if (!seenMainEntries.contains(key)) {
+                      filteredDonations.add(donation);
+                      seenMainEntries.add(key);
+                    }
+                  }
+
+                  final displayDonations = filteredDonations.take(10).toList();
+
+                  if (displayDonations.isEmpty) {
                     // Show an empty friendly state instead of shimmer to avoid flicker
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 16.0),
@@ -456,61 +475,72 @@ class _homePageState extends State<homePage> with AutomaticKeepAliveClientMixin 
                     );
                   }
 
-                  return ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: recentDonations.length,
-                    itemBuilder: (context, index) {
-                    final donation = recentDonations[index];
-                    final formattedDate = donation.date.isNotEmpty ? '${donation.date} • ' : '';
-                    final monthYear = '${donation.month} ${donation.year}';
+                  return Material(
+                    color: Colors.transparent,
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: displayDonations.length,
+                      itemBuilder: (context, index) {
+                      final donation = displayDonations[index];
+                      final formattedDate = donation.date.isNotEmpty ? '${donation.date} • ' : '';
+                      
+                      String monthYear;
+                      if (donation.monthsList != null && donation.monthsList!.isNotEmpty) {
+                        monthYear = MonthFormatter.formatMonthList(donation.monthsList!, donation.year);
+                      } else {
+                        monthYear = '${donation.month} ${donation.year}';
+                      }
 
-                    return ListTile(
-                      onTap: () {
-                        // Handle donation tap if needed
-                      },
-                      leading: StableAvatar(
-                        imageUrl: donation.imageUrl,
-                        name: donation.name,
-                        radius: 20,
-                      ),
-                      title: Text(
-                        donation.name,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontFamily: "Inter",
-                          fontWeight: FontWeight.w600,
+                      final amount = donation.totalDonationAmount ?? donation.amount;
+
+                      return ListTile(
+                        onTap: () {
+                          // Handle donation tap if needed
+                        },
+                        leading: StableAvatar(
+                          imageUrl: donation.imageUrl,
+                          name: donation.name,
+                          radius: 20,
                         ),
-                      ),
-                      subtitle: Text(
-                        '$formattedDate$monthYear',
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontFamily: "Inter",
-                          fontWeight: FontWeight.w400,
-                          color: Color(0xff817D8A),
-                        ),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                "₹${donation.amount.toString()}",
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
+                        title: Text(
+                          donation.name,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontFamily: "Inter",
+                            fontWeight: FontWeight.w600,
                           ),
-                        ],
-                      ),
-                    );
-                  },
+                        ),
+                        subtitle: Text(
+                          '$formattedDate$monthYear',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontFamily: "Inter",
+                            fontWeight: FontWeight.w400,
+                            color: Color(0xff817D8A),
+                          ),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  "₹${amount.toStringAsFixed(0)}",
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    ),
                   );
                 },
               ),
@@ -529,9 +559,24 @@ class BottomNavBarExample extends StatefulWidget {
   _BottomNavBarExampleState createState() => _BottomNavBarExampleState();
 }
 
+/// One bottom-nav entry. Used by [BottomNavBarExample] so the role-based
+/// filter can pick the right combination at build time.
+class _NavEntry {
+  final String key; // 'home' | 'donor' | 'payments' | 'accounts' | 'settings'
+  final String label;
+  final Widget page;
+  final Widget Function(bool selected, BuildContext ctx) iconBuilder;
+  _NavEntry({
+    required this.key,
+    required this.label,
+    required this.page,
+    required this.iconBuilder,
+  });
+}
+
 class _BottomNavBarExampleState extends State<BottomNavBarExample> {
   final GlobalKey<_homePageState> _homePageKey = GlobalKey<_homePageState>();
-  late final List<Widget> _pages;
+  late final List<_NavEntry> _allEntries;
   int _lastIndex = 0;
   late final NavBarProvider _navBarProvider;
   DateTime? _lastHomeRefreshAt; // throttle home auto-refresh
@@ -540,26 +585,113 @@ class _BottomNavBarExampleState extends State<BottomNavBarExample> {
   void initState() {
     super.initState();
     _navBarProvider = NavBarProvider();
-    _pages = [
-      homePage(key: _homePageKey),
-      donorPage(),
-      PaymentsPage(),
-      SettingsPage(),
+    _allEntries = [
+      _NavEntry(
+        key: 'home',
+        label: 'Home',
+        page: homePage(key: _homePageKey),
+        iconBuilder: (sel, _) => SvgPicture.asset(
+          sel ? 'lib/assets/images/home.svg' : 'lib/assets/images/homeuns.svg',
+          height: 24,
+          width: 24,
+        ),
+      ),
+      _NavEntry(
+        key: 'donor',
+        label: 'Donor',
+        page: donorPage(),
+        iconBuilder: (sel, _) => SvgPicture.asset(
+          sel
+              ? 'lib/assets/images/donor.svg'
+              : 'lib/assets/images/donoruns.svg',
+          height: 24,
+          width: 24,
+        ),
+      ),
+      _NavEntry(
+        key: 'payments',
+        label: 'Payments',
+        page: PaymentsPage(),
+        iconBuilder: (sel, _) => SvgPicture.asset(
+          sel
+              ? 'lib/assets/images/payments.svg'
+              : 'lib/assets/images/paymentsuns.svg',
+          height: 24,
+          width: 24,
+        ),
+      ),
+      _NavEntry(
+        key: 'accounts',
+        label: 'Accounts',
+        page: const TransactionsPage(),
+        iconBuilder: (sel, ctx) => Icon(
+          Icons.swap_horiz_rounded,
+          size: 24,
+          color: sel
+              ? (Theme.of(ctx).brightness == Brightness.dark
+                  ? Colors.white
+                  : const Color(0xff101011))
+              : const Color(0xff817D8A),
+        ),
+      ),
+      _NavEntry(
+        key: 'settings',
+        label: 'Settings',
+        page: SettingsPage(),
+        iconBuilder: (sel, _) => SvgPicture.asset(
+          sel
+              ? 'lib/assets/images/settings.svg'
+              : 'lib/assets/images/settingsuns.svg',
+          height: 24,
+          width: 24,
+        ),
+      ),
     ];
+  }
+
+  /// Filter entries by role. Collectors don't see Accounts.
+  List<_NavEntry> _visibleEntries(Permissions perms) {
+    return _allEntries.where((e) {
+      switch (e.key) {
+        case 'home':
+          return perms.canSeeHomeTab;
+        case 'donor':
+          return perms.canSeeDonorTab;
+        case 'payments':
+          return perms.canSeePaymentsTab;
+        case 'accounts':
+          return perms.canSeeAccountsTab;
+        case 'settings':
+          return perms.canSeeSettingsTab;
+        default:
+          return false;
+      }
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
+    final perms = context.watch<Permissions>();
+    final entries = _visibleEntries(perms);
+
     return ChangeNotifierProvider.value(
       value: _navBarProvider,
       child: Consumer<NavBarProvider>(
         builder: (context, navBarProvider, child) {
-          print('Selected Index: ${navBarProvider.selectedIndex}');
-          // Refresh homepage data only when index actually changes to 0 and throttle
-          if (navBarProvider.selectedIndex != _lastIndex) {
-            if (navBarProvider.selectedIndex == 0) {
+          // Clamp selected index to the new list length (in case role changed)
+          int currentIndex = navBarProvider.selectedIndex;
+          if (currentIndex >= entries.length) {
+            currentIndex = 0;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              navBarProvider.changeIndex(0);
+            });
+          }
+
+          if (currentIndex != _lastIndex) {
+            if (entries.isNotEmpty && entries[currentIndex].key == 'home') {
               final now = DateTime.now();
-              final shouldRefresh = _lastHomeRefreshAt == null || now.difference(_lastHomeRefreshAt!).inSeconds > 30;
+              final shouldRefresh = _lastHomeRefreshAt == null ||
+                  now.difference(_lastHomeRefreshAt!).inSeconds > 30;
               if (shouldRefresh) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   _homePageKey.currentState?._refreshData();
@@ -567,15 +699,15 @@ class _BottomNavBarExampleState extends State<BottomNavBarExample> {
                 _lastHomeRefreshAt = now;
               }
             }
-            _lastIndex = navBarProvider.selectedIndex;
+            _lastIndex = currentIndex;
           }
           return Scaffold(
-            backgroundColor: Color(0xffFFFFFF),
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             appBar: PreferredSize(
-              preferredSize: Size.fromHeight(100),
+              preferredSize: const Size.fromHeight(100),
               child: AppBar(
                 elevation: 0,
-                backgroundColor: Color(0xff1BA3A1),
+                backgroundColor: const Color(0xff1BA3A1),
                 automaticallyImplyLeading: false,
                 flexibleSpace: Align(
                   alignment: Alignment.bottomCenter,
@@ -594,7 +726,7 @@ class _BottomNavBarExampleState extends State<BottomNavBarExample> {
                         ),
                         Row(
                           children: [
-                            Container(
+                            SizedBox(
                               height: 26,
                               width: 84,
                               child: ElevatedButton(
@@ -607,7 +739,7 @@ class _BottomNavBarExampleState extends State<BottomNavBarExample> {
                                       borderRadius: BorderRadius.circular(2)),
                                   elevation: 0,
                                 ),
-                                child: Center(
+                                child: const Center(
                                   child: Text(
                                     'Logout',
                                     style: TextStyle(
@@ -628,66 +760,31 @@ class _BottomNavBarExampleState extends State<BottomNavBarExample> {
               ),
             ),
             body: IndexedStack(
-              index: navBarProvider.selectedIndex,
-              children: _pages,
+              index: currentIndex,
+              children: [for (final e in entries) e.page],
             ),
             bottomNavigationBar: BottomNavigationBar(
-              items: <BottomNavigationBarItem>[
-                BottomNavigationBarItem(
-                  icon: SvgPicture.asset(
-                    navBarProvider.selectedIndex == 0
-                        ? 'lib/assets/images/home.svg'
-                        : 'lib/assets/images/homeuns.svg',
-                    height: 24,
-                    width: 24,
+              items: [
+                for (int i = 0; i < entries.length; i++)
+                  BottomNavigationBarItem(
+                    icon: entries[i].iconBuilder(i == currentIndex, context),
+                    label: entries[i].label,
                   ),
-                  label: 'Home',
-                ),
-                BottomNavigationBarItem(
-                  icon: SvgPicture.asset(
-                    navBarProvider.selectedIndex == 1
-                        ? 'lib/assets/images/donor.svg'
-                        : 'lib/assets/images/donoruns.svg',
-                    height: 24,
-                    width: 24,
-                  ),
-                  label: 'Donor',
-                ),
-                BottomNavigationBarItem(
-                  icon: SvgPicture.asset(
-                    navBarProvider.selectedIndex == 2
-                        ? 'lib/assets/images/payments.svg'
-                        : 'lib/assets/images/paymentsuns.svg',
-                    height: 24,
-                    width: 24,
-                  ),
-                  label: 'Payments',
-                ),
-                BottomNavigationBarItem(
-                  icon: SvgPicture.asset(
-                    navBarProvider.selectedIndex == 3
-                        ? 'lib/assets/images/settings.svg'
-                        : 'lib/assets/images/settingsuns.svg',
-                    height: 24,
-                    width: 24,
-                  ),
-                  label: 'Settings',
-                ),
               ],
-              currentIndex: navBarProvider.selectedIndex,
+              currentIndex: currentIndex,
               onTap: (index) => navBarProvider.changeIndex(index),
               elevation: 0,
-              backgroundColor: Color(0xffF2F2F3),
-              selectedItemColor: Color(0xff101011),
-              unselectedItemColor: Color(0xff817D8A),
-              selectedLabelStyle: TextStyle(
-                  fontFamily: "Inter",
-                  fontWeight: FontWeight.w400,
-                  fontSize: 10),
-              unselectedLabelStyle: TextStyle(
-                  fontFamily: "Inter",
-                  fontWeight: FontWeight.w400,
-                  fontSize: 10),
+              backgroundColor: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF1E1E1E)
+                  : const Color(0xffF2F2F3),
+              selectedItemColor: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : const Color(0xff101011),
+              unselectedItemColor: const Color(0xff817D8A),
+              selectedLabelStyle: const TextStyle(
+                  fontFamily: "Inter", fontWeight: FontWeight.w400, fontSize: 10),
+              unselectedLabelStyle: const TextStyle(
+                  fontFamily: "Inter", fontWeight: FontWeight.w400, fontSize: 10),
               type: BottomNavigationBarType.fixed,
             ),
           );

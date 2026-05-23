@@ -44,8 +44,8 @@ class DonationsProvider extends ChangeNotifier {
       // Start Firestore listening
       _listenToDonations();
     } catch (e, stackTrace) {
-      _errorMessage = 'Failed to initialize local storage: $e';
       log('Error in _initIsarAndLoad', error: e, stackTrace: stackTrace);
+      _errorMessage = 'Could not load data. Check your connection.';
       _isLoading = false;
       _isInitialized = true;
       notifyListeners();
@@ -53,9 +53,11 @@ class DonationsProvider extends ChangeNotifier {
   }
 
   void _listenToDonations() {
+    // Always cancel the old subscription before creating a new one.
+    _donationsSubscription?.cancel();
     _isLoading = true;
     notifyListeners();
-    
+
     _donationsSubscription = FirebaseFirestore.instance
         .collectionGroup('paymentStatus')
         .where('status', isEqualTo: 'paid')
@@ -80,8 +82,9 @@ class DonationsProvider extends ChangeNotifier {
         _isLoading = false;
         notifyListeners();
       }
-    }, onError: (error) {
-      _errorMessage = 'Firestore error: ${error.toString()}';
+    }, onError: (Object error) {
+      log('DonationsProvider Firestore error', error: error);
+      _errorMessage = 'Could not load donations. Check your connection.';
       _isLoading = false;
       notifyListeners();
     });
@@ -115,17 +118,17 @@ class DonationsProvider extends ChangeNotifier {
       
       _errorMessage = null;
     } catch (e, stackTrace) {
-      _errorMessage = 'Failed to process donations: $e';
       log('Error in _processDocumentsAsync', error: e, stackTrace: stackTrace);
-      
-      // Try to load from cache if online processing fails
+      // Fall back to cached data silently; only surface an error if cache is also empty.
       try {
         await _loadCachedDonations();
-        if (_donations.isNotEmpty) {
-          _errorMessage = 'Showing cached data: ${e.toString()}';
+        if (_donations.isEmpty) {
+          _errorMessage = 'Could not load data. Check your connection.';
         }
+        // If cache has data, don't override with an error — user still sees content.
       } catch (cacheError) {
         log('Error loading from cache', error: cacheError);
+        _errorMessage = 'Could not load data. Check your connection.';
       }
     } finally {
       _isLoading = false;
@@ -262,53 +265,36 @@ class DonationsProvider extends ChangeNotifier {
     return '$day/$month/${date.year}';
   }
 
+  // dispose() must be synchronous — never mark it async.
   @override
-  void dispose() async {
-    // Cancel any active subscriptions
-    await _donationsSubscription?.cancel();
+  void dispose() {
+    _donationsSubscription?.cancel();
     _donationsSubscription = null;
-    
-    // Clear caches to free memory
     _donorCache.clear();
     _donations = [];
-    
-    // Note: We don't close Isar here as it's managed by LocalDatabaseService
-    // which is a singleton and should handle its own cleanup
-    
     super.dispose();
   }
-  
-  // Add a method to manually refresh data
+
   Future<void> refresh() async {
+    // Guard: cancel existing subscription before creating a new one.
+    _donationsSubscription?.cancel();
+    _donationsSubscription = null;
+
+    _donations = [];
+    _donorCache.clear();
+    _latestSnapshot = null;
+    _hasInitialData = false;
+    _errorMessage = null;
+    _isLoading = true;
+    notifyListeners();
+
     try {
-      _isLoading = true;
-      _errorMessage = null;
-      notifyListeners();
-      
-      // Cancel any existing subscription
-      await _donationsSubscription?.cancel();
-      
-      // Clear caches
-      _donations = [];
-      _donorCache.clear();
-      _latestSnapshot = null;
-      _hasInitialData = false;
-      
-      // Force sync with Firestore
       await _localDb.syncWithFirestore();
-      
-      // Reload data
       await _loadCachedDonations();
-      
-      // Restart the listener
       _listenToDonations();
-      
-      return;
     } catch (e, stackTrace) {
-      _errorMessage = 'Failed to refresh data: $e';
+      _errorMessage = 'Failed to refresh data. Please try again.';
       log('Error in refresh', error: e, stackTrace: stackTrace);
-      rethrow;
-    } finally {
       _isLoading = false;
       notifyListeners();
     }
